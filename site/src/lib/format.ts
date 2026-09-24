@@ -72,12 +72,16 @@ export function dirClass(value: number | null | undefined): string {
 export function staleness(
   asOf: string | null | undefined,
   cadence: 'daily' | 'intraday' = 'daily',
+  expectedLagDays = 1,
+  archival = false,
 ): { text: string; cls: string } {
   if (!asOf) return { text: 'no date', cls: 'bad' };
   const then = new Date(asOf).getTime();
   if (Number.isNaN(then)) return { text: asOf, cls: 'unknown' };
+  // A one-off historical import is old on purpose and is never a fault.
+  if (archival) return { text: `${asOf.slice(0, 10)} · archival`, cls: 'ok' };
   const days = (Date.now() - then) / 864e5;
-  const fresh = cadence === 'daily' ? 2 : 0.25;
+  const fresh = (cadence === 'daily' ? 1 : 0.25) + expectedLagDays;
   if (days < fresh) return { text: asOf.slice(0, 10), cls: 'ok' };
   const whole = Math.floor(days);
   // Past a few days this stops being a publishing lag and starts being a fault,

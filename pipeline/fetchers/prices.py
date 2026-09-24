@@ -238,5 +238,8 @@ def backfill_btc_from_coinmetrics() -> int:
     store.write_ohlcv("BTC", "coinmetrics", frame)
     health.record(health.Record(
         source="coinmetrics", endpoint="PriceUSD", dataset="BTC pre-2017 closes",
-        status="ok", rows=len(frame), as_of=str(frame["date"].max())))
+        status="ok", rows=len(frame), as_of=str(frame["date"].max()),
+        # A one-off historical import. Its newest row is from 2017 by design,
+        # so measuring it against today would report a permanent fault.
+        archival=True))
     return len(frame)

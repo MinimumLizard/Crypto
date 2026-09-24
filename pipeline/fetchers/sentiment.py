@@ -84,6 +84,7 @@ def wikipedia_views(article: str = "Bitcoin", key: str = "btc",
     health.record(health.Record(
         source="wikimedia", endpoint=article, dataset=f"{key} page views",
         status="ok", rows=len(frame), as_of=str(frame["date"].max()),
+        expected_lag_days=2.0,   # Wikimedia publishes page views ~2 days late
         latency_ms=int((time.perf_counter() - started) * 1000)))
     return frame
 

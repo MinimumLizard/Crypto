@@ -25,7 +25,8 @@ async function main(): Promise<void> {
     </div>`).join('');
 
   const rows = data.rows.map((r: any) => {
-    const stale = staleness(r.as_of ?? r.fetched_at);
+    const stale = staleness(r.as_of ?? r.fetched_at, 'daily',
+      r.expected_lag_days ?? 1, r.archival ?? false);
     return `<tr>
       <td>${escapeHtml(r.source)}</td>
       <td>${escapeHtml(r.dataset)}</td>

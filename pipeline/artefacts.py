@@ -309,6 +309,8 @@ def build_source_health() -> dict:
                 "status": row["status"], "as_of": row["as_of"],
                 "fetched_at": row["fetched_at"], "rows": row["rows"],
                 "error": (row["error"] or "")[:200],
+                "expected_lag_days": row.get("expected_lag_days") or 1.0,
+                "archival": bool(row.get("archival")),
             })
     counts: dict[str, int] = {}
     for row in rows:
@@ -321,7 +323,10 @@ def build_source_health() -> dict:
             "One row per source per dataset, showing the most recent attempt. "
             "'needs_key' is not a failure -- it is a source that works but has "
             "not been given credentials. A failing source never breaks the build; "
-            "its last good value is carried forward and marked stale."),
+            "its last good value is carried forward and marked stale. Staleness "
+            "is measured against each source's OWN expected lag: Wikimedia "
+            "publishes two days late and a daily bar series is a day behind "
+            "because today's bar has not closed, so neither is a fault."),
     }
 
 

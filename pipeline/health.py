@@ -29,6 +29,14 @@ SCHEMA = {
     "status": pl.Utf8,       # ok | empty | http_error | network_error | needs_key | skipped
     "error": pl.Utf8,
     "latency_ms": pl.Int64,
+    # How far behind "now" this dataset is SUPPOSED to be. Wikimedia publishes
+    # page views about two days late; a daily bar series is a day behind by
+    # definition because today's bar has not closed; a historical backfill is
+    # years behind on purpose. Judging all of them against "today" produces
+    # false alarms, and a staleness badge that cries wolf is worse than none.
+    "expected_lag_days": pl.Float64,
+    # True for a one-off historical import that is never expected to advance.
+    "archival": pl.Boolean,
 }
 
 
@@ -42,6 +50,8 @@ class Record:
     rows: int = 0
     error: str = ""
     latency_ms: int = 0
+    expected_lag_days: float = 1.0
+    archival: bool = False
     fetched_at: str = field(
         default_factory=lambda: dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))
 
@@ -58,6 +68,22 @@ def record(rec: Record) -> Record:
     return rec
 
 
+def _conform(frame: pl.DataFrame) -> pl.DataFrame:
+    """Bring a stored frame up to the current SCHEMA.
+
+    The table gains columns as the pipeline learns things -- `expected_lag_days`
+    and `archival` were added once it became clear that judging every source
+    against "today" produced permanent false alarms. A stored file written
+    before that would otherwise make `concat` fail with "schema lengths differ",
+    which is a crash rather than a migration. Missing columns are filled with
+    nulls of the right type and extra ones are dropped.
+    """
+    for name, dtype in SCHEMA.items():
+        if name not in frame.columns:
+            frame = frame.with_columns(pl.lit(None, dtype=dtype).alias(name))
+    return frame.select(list(SCHEMA))
+
+
 def flush() -> int:
     """Write queued rows to the store. Safe to call when nothing is queued."""
     if not _pending:
@@ -65,7 +91,8 @@ def flush() -> int:
     frame = pl.DataFrame([asdict(r) for r in _pending], schema=SCHEMA)
     paths.DATA.mkdir(parents=True, exist_ok=True)
     if paths.HEALTH.exists():
-        frame = pl.concat([pl.read_parquet(paths.HEALTH), frame], how="vertical_relaxed")
+        existing = _conform(pl.read_parquet(paths.HEALTH))
+        frame = pl.concat([existing, frame], how="vertical_relaxed")
     frame.write_parquet(paths.HEALTH)
     written = len(_pending)
     _pending.clear()
@@ -75,7 +102,7 @@ def flush() -> int:
 def load() -> pl.DataFrame:
     if not paths.HEALTH.exists():
         return pl.DataFrame(schema=SCHEMA)
-    return pl.read_parquet(paths.HEALTH)
+    return _conform(pl.read_parquet(paths.HEALTH))
 
 
 def latest_by_source() -> pl.DataFrame:
