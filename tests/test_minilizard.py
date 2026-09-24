@@ -89,9 +89,12 @@ def test_extension_penalty_is_signed_against_the_move():
     """Subtracted when stretched up, ADDED when stretched down."""
     n = 40
     flat = np.full(n, 100.0)
-    spiked_up = flat.copy(); spiked_up[-1] = 130.0
-    spiked_down = flat.copy(); spiked_down[-1] = 70.0
-    confirmed = np.roll(flat, 1); confirmed[0] = np.nan
+    spiked_up = flat.copy()
+    spiked_up[-1] = 130.0
+    spiked_down = flat.copy()
+    spiked_down[-1] = 70.0
+    confirmed = np.roll(flat, 1)
+    confirmed[0] = np.nan
 
     up = ml._extension_penalty(spiked_up, confirmed, 12.0)
     down = ml._extension_penalty(spiked_down, confirmed, 12.0)
@@ -103,16 +106,20 @@ def test_extension_penalty_is_signed_against_the_move():
 def test_penalty_is_zero_inside_the_threshold():
     n = 40
     flat = np.full(n, 100.0)
-    nudged = flat.copy(); nudged[-1] = 105.0     # 5% < 12% threshold
-    confirmed = np.roll(flat, 1); confirmed[0] = np.nan
+    nudged = flat.copy()
+    nudged[-1] = 105.0     # 5% < 12% threshold
+    confirmed = np.roll(flat, 1)
+    confirmed[0] = np.nan
     assert ml._extension_penalty(nudged, confirmed, 12.0)[-1] == 0.0
 
 
 def test_btc_threshold_is_stricter_than_the_altcoin_one():
     n = 40
     flat = np.full(n, 100.0)
-    moved = flat.copy(); moved[-1] = 108.0       # 8%: over BTC's 5, under alts' 12
-    confirmed = np.roll(flat, 1); confirmed[0] = np.nan
+    moved = flat.copy()
+    moved[-1] = 108.0       # 8%: over BTC's 5, under alts' 12
+    confirmed = np.roll(flat, 1)
+    confirmed[0] = np.nan
     assert ml._extension_penalty(moved, confirmed, 5.0)[-1] < 0
     assert ml._extension_penalty(moved, confirmed, 12.0)[-1] == 0.0
 

@@ -76,7 +76,9 @@ def test_cci_uses_mean_absolute_deviation():
 
 
 def test_true_range_first_bar_has_no_previous_close():
-    high = np.array([10.0, 12.0]); low = np.array([8.0, 9.0]); close = np.array([9.0, 11.0])
+    high = np.array([10.0, 12.0])
+    low = np.array([8.0, 9.0])
+    close = np.array([9.0, 11.0])
     out = ind.true_range(high, low, close)
     assert out[0] == pytest.approx(2.0)                # high - low only
     assert out[1] == pytest.approx(max(3.0, 3.0, 0.0))

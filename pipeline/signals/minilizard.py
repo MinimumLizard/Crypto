@@ -175,7 +175,6 @@ def _price_structure(confirmed: np.ndarray, close: np.ndarray,
 
 def _trend(high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
     """Supertrend + Ichimoku, amplified 1.4x when ADX(14,14) > 25."""
-    n = len(close)
     _, direction = ind.supertrend(high, low, close, factor=3.0, atr_length=10)
     cloud = ind.ichimoku(high, low)
     displacement = cloud["displacement"]

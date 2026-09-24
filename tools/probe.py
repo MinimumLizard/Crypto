@@ -28,16 +28,17 @@ into the output so a runner's results can be diffed against a home machine's.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import platform
 import socket
 import sys
 import time
-import datetime as dt
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
@@ -102,7 +103,7 @@ class Result:
 
 def _iso(ms: float) -> str:
     try:
-        return dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).date().isoformat()
+        return dt.datetime.fromtimestamp(ms / 1000, dt.UTC).date().isoformat()
     except Exception:
         return "?"
 
@@ -279,7 +280,7 @@ def sum_coingecko_ping(p):
 @_safe
 def sum_fng(p):
     d = p.get("data", [])
-    first = dt.datetime.fromtimestamp(int(d[-1]["timestamp"]), dt.timezone.utc).date().isoformat() if d else None
+    first = dt.datetime.fromtimestamp(int(d[-1]["timestamp"]), dt.UTC).date().isoformat() if d else None
     return {"rows": len(d), "earliest": first, "latest_value": d[0]["value"] if d else None,
             "fields": ",".join(d[0].keys()) if d else ""}
 
@@ -818,7 +819,7 @@ def main() -> None:
             time.sleep(0.25)   # be a polite citizen of free APIs
 
     meta = {
-        "ran_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "ran_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "location": args.location, "egress_ip": egress_ip, "egress_geo": egress_geo,
         "python": sys.version.split()[0], "platform": platform.platform(),
         "hostname": socket.gethostname(),

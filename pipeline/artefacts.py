@@ -24,7 +24,7 @@ import numpy as np
 import polars as pl
 
 from pipeline import health, paths, registry, store
-from pipeline.metrics import levels, risk
+from pipeline.metrics import levels
 from pipeline.signals import minilizard as ml
 
 
@@ -189,6 +189,7 @@ def build_asset(asset: registry.Asset) -> dict:
         payload["regime"] = {"available": False, "reason": "no bars"}
         return payload
 
+    payload["venue_crosscheck"] = _crosscheck(asset.symbol, venues)
     payload["levels"] = levels.key_levels(display)
     payload["returns"] = levels.returns(display)
     payload["fifty_week"] = levels.fifty_week_tracker(display)
@@ -220,6 +221,70 @@ def build_asset(asset: registry.Asset) -> dict:
                                 "dollars."),
             }
     return payload
+
+
+def _crosscheck(symbol: str, venues: list[str]) -> dict:
+    """Compare venues' closes ON THE SAME DATE.
+
+    SPEC §6.4 asks for a cross-check that flags a >10% disagreement between
+    sources -- the RAY problem, where one source said $163m and another $504m.
+    The same idea applies to price and is nearly free here, because the bars are
+    already stored per venue.
+
+    Comparing each venue's OWN last row is wrong, and wrong in a way that looks
+    like a finding: BTC's CoinMetrics series is a pre-2017 backfill that ends in
+    2016, so against today's Binance close it reported a 1833% "disagreement".
+    Venues are therefore aligned on the most recent date they all cover, and a
+    venue whose history stops well before the others is excluded by name rather
+    than silently averaged in.
+    """
+    frames: dict[str, pl.DataFrame] = {}
+    for venue in venues:
+        frame = store.read_ohlcv(symbol, venue)
+        if not frame.is_empty():
+            frames[venue] = frame
+    if len(frames) < 2:
+        return {"available": False,
+                "reason": "fewer than two venues have bars; nothing to compare"}
+
+    newest = max(frame["date"][-1] for frame in frames.values())
+    # A venue more than a week behind the freshest one is not quoting the same
+    # thing any more; name it rather than compare against it.
+    stale_venues, live = [], {}
+    for venue, frame in frames.items():
+        if (newest - frame["date"][-1]).days > 7:
+            stale_venues.append(venue)
+        else:
+            live[venue] = frame
+
+    if len(live) < 2:
+        return {"available": False,
+                "reason": f"only one current venue; {', '.join(stale_venues)} "
+                          f"end earlier and are not comparable"}
+
+    shared = min(frame["date"][-1] for frame in live.values())
+    closes: dict[str, float] = {}
+    for venue, frame in live.items():
+        row = frame.filter(pl.col("date") == shared)
+        if row.height:
+            closes[venue] = float(row["close"][0])
+    if len(closes) < 2:
+        return {"available": False, "reason": "no shared date across venues"}
+
+    low, high = min(closes.values()), max(closes.values())
+    spread_pct = (high / low - 1) * 100 if low > 0 else None
+    return {
+        "available": True,
+        "on_date": str(shared),
+        "closes": {k: round(v, 10) for k, v in closes.items()},
+        "excluded": stale_venues,
+        "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
+        "disagrees": bool(spread_pct is not None and spread_pct > 10),
+        "how_to_read": (
+            "Each venue's close on the same date. Venues differ by a fraction of "
+            "a percent in normal conditions; a gap above 10% is flagged because "
+            "it means one series is wrong, not that the asset moved."),
+    }
 
 
 def _last(array) -> float | None:

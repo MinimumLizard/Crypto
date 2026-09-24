@@ -1,0 +1,29 @@
+# GitHub disables scheduled workflows on a public repository after 60 days
+# without repository activity. A site that rebuilds itself daily would then
+# quietly stop, and the failure mode is silence rather than an error.
+
+name: Keepalive
+
+on:
+  schedule:
+    - cron: "15 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  poke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+      - name: Touch a heartbeat file
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          git diff --cached --quiet || git commit -m "Keepalive $(date -u +%Y-%m-%d)"
+          git push

@@ -1,0 +1,227 @@
+/* Dense dark terminal, one accent. Related to the Nelson-Siegel site: colour is
+   a ROLE, not a hex, so the whole palette swaps in one place, and a status
+   colour never carries meaning without a word or a sign beside it. */
+
+:root {
+  color-scheme: dark;
+
+  --surface:   #12120f;      /* page */
+  --plane:     #1a1a16;      /* panels */
+  --plane-2:   #232320;      /* rows, hover */
+  --ink:       #f2f0e9;
+  --ink-2:     #b5b2a6;
+  --muted:     #7d7a70;
+  --grid:      #2c2c27;
+  --border:    #35352e;
+
+  --accent:    #f0a020;      /* the one accent: amber */
+  --accent-dim:#6b4a12;
+
+  /* Polarity: a diverging pair with a neutral middle. Never two arbitrary hues. */
+  --up:        #4bb36b;
+  --down:      #d9584f;
+  --neutral:   #55554d;
+
+  /* Status, always shipped with a word. */
+  --ok:        #4bb36b;
+  --warn:      #d9a441;
+  --bad:       #d9584f;
+  --unknown:   #6a6a62;
+
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every number on the site is monospaced and tabular, so columns line up and a
+   digit changing does not reflow the row. */
+.num, td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- layout ---------- */
+
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 16px; }
+
+header.top {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar { display: flex; align-items: center; gap: 14px; padding: 8px 0; flex-wrap: wrap; }
+
+.brand {
+  font-family: var(--mono); font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink); white-space: nowrap;
+}
+.brand span { color: var(--accent); }
+
+nav.routes { display: flex; gap: 2px; flex-wrap: wrap; margin-left: auto; }
+nav.routes a {
+  color: var(--ink-2); padding: 3px 8px; border-radius: 3px;
+  font-size: 12px; white-space: nowrap;
+}
+nav.routes a:hover { background: var(--plane-2); color: var(--ink); text-decoration: none; }
+nav.routes a[aria-current="page"] { background: var(--accent-dim); color: var(--ink); }
+
+/* Header ticker */
+.ticker {
+  display: flex; gap: 0; overflow-x: auto; border-top: 1px solid var(--border);
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.ticker::-webkit-scrollbar { display: none; }
+.tick {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 5px 14px 5px 0; margin-right: 14px;
+  border-right: 1px solid var(--border); white-space: nowrap; flex: 0 0 auto;
+}
+.tick .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.tick .v { font-family: var(--mono); font-size: 13px; }
+
+.clocks { display: flex; gap: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.clocks b { color: var(--muted); font-weight: 400; }
+
+/* ---------- panels ---------- */
+
+section.panel {
+  background: var(--plane); border: 1px solid var(--border);
+  border-radius: 4px; margin: 14px 0; overflow: hidden;
+}
+.panel > h2 {
+  margin: 0; padding: 10px 14px; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.02em; border-bottom: 1px solid var(--border);
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.panel > h2 .asof {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  font-weight: 400; color: var(--muted);
+}
+.panel .body { padding: 12px 14px; }
+
+/* "How to read this" — §2.5 requires one on every panel. */
+.howto {
+  color: var(--ink-2); font-size: 12.5px; line-height: 1.55;
+  margin: 0 0 10px; padding-left: 10px; border-left: 2px solid var(--accent-dim);
+}
+.caveat { color: var(--warn); }
+
+.grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+
+/* ---------- tables ---------- */
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0; background: var(--plane);
+  text-align: right; font-weight: 600; color: var(--ink-2);
+  padding: 6px 8px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+thead th:first-child, tbody td:first-child { text-align: left; }
+tbody td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+tbody tr:hover { background: var(--plane-2); }
+th[data-sort] { cursor: pointer; user-select: none; }
+th[data-sort]:hover { color: var(--ink); }
+th[aria-sort] { color: var(--accent); }
+
+/* ---------- value semantics ----------
+   Colour ALWAYS travels with a sign or an arrow, never alone (§9). */
+.up   { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--muted); }
+.na   { color: var(--muted); font-style: italic; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 10.5px; padding: 1px 6px;
+  border-radius: 3px; border: 1px solid var(--border); color: var(--ink-2);
+  white-space: nowrap;
+}
+.badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--unknown); }
+.badge.ok i { background: var(--ok); }
+.badge.warn i { background: var(--warn); }
+.badge.bad i { background: var(--bad); }
+
+.regime { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 3px; }
+.regime.BULL    { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+.regime.BEAR    { background: color-mix(in srgb, var(--down) 22%, transparent); color: var(--down); }
+.regime.NEUTRAL { background: var(--plane-2); color: var(--ink-2); }
+
+/* A missing value states why, and is never a zero. */
+.missing {
+  color: var(--muted); font-size: 12.5px; font-style: italic;
+  padding: 10px 0; display: block;
+}
+
+/* ---------- gauges ---------- */
+.gauges { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.gauge { background: var(--plane-2); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
+.gauge .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.gauge .v { font-family: var(--mono); font-size: 24px; line-height: 1.2; margin: 3px 0; }
+.gauge .bar { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+.gauge .bar span { display: block; height: 100%; background: var(--accent); }
+.gauge .n { font-size: 11px; color: var(--ink-2); margin-top: 5px; }
+
+/* ---------- charts ---------- */
+.chart { width: 100%; height: 340px; }
+.chart.short { height: 200px; }
+
+/* ---------- command palette ---------- */
+.palette-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.palette { background: var(--plane); border: 1px solid var(--border); border-radius: 6px; width: min(560px, 92vw); overflow: hidden; }
+.palette input {
+  width: 100%; padding: 12px 14px; background: transparent; border: 0;
+  border-bottom: 1px solid var(--border); color: var(--ink);
+  font-family: var(--mono); font-size: 15px; outline: none;
+}
+.palette ul { list-style: none; margin: 0; padding: 4px; max-height: 45vh; overflow-y: auto; }
+.palette li { padding: 7px 10px; border-radius: 3px; cursor: pointer; display: flex; gap: 10px; font-size: 13px; }
+.palette li .hint { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.palette li[aria-selected="true"] { background: var(--accent-dim); }
+
+/* ---------- footer ---------- */
+footer.site {
+  border-top: 1px solid var(--border); margin-top: 28px; padding: 16px 0 34px;
+  color: var(--muted); font-size: 11.5px; line-height: 1.6;
+}
+footer.site strong { color: var(--ink-2); }
+
+.disclaimer { color: var(--ink-2); }
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap { padding: 0 12px; }
+  nav.routes { width: 100%; margin-left: 0; overflow-x: auto; }
+  .clocks { font-size: 10px; gap: 8px; }
+  .panel > h2 { font-size: 12.5px; }
+  .panel > h2 .asof { margin-left: 0; width: 100%; }
+  .gauge .v { font-size: 20px; }
+  table { font-size: 12px; }
+  tbody td, thead th { padding: 5px 6px; }
+  .chart { height: 260px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

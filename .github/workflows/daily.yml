@@ -1,0 +1,122 @@
+# The full daily rebuild, and the only thing that publishes the site.
+#
+# 00:20 UTC, deliberately off the hour: Actions cron slips badly at :00, and the
+# run has to land AFTER the crypto daily close so the regime engine scores
+# confirmed bars rather than an open one.
+
+name: Daily build
+
+on:
+  schedule:
+    - cron: "20 0 * * *"
+  workflow_dispatch:
+    inputs:
+      refetch:
+        description: "Refetch everything rather than only what is missing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write     # commits the refreshed store to the data branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The history store lives on its own branch (D008), checked out into
+      # data/ so the pipeline sees it at the path it expects.
+      - name: Check out the data branch
+        uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data-branch
+
+      - name: Put the store in place
+        run: |
+          mkdir -p data
+          rsync -a --exclude='.git' --exclude='README.md' data-branch/ data/ || true
+          du -sh data || true
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-extras
+
+      - name: Fetch
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          COINGECKO_DEMO_KEY: ${{ secrets.COINGECKO_DEMO_KEY }}
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        # A failing source writes a health row and the build continues (§2.8),
+        # so this step is not allowed to fail the job on a bad day at one API.
+        run: uv run terminal fetch --only all || echo "fetch reported failures; see source health"
+
+      - name: Tests, now with real history
+        # The quantile replication gate only has data to run against here.
+        run: uv run pytest -q
+
+      - name: Build artefacts
+        run: uv run terminal build
+
+      - name: Validate
+        run: uv run terminal validate | tee validation.txt
+
+      - name: Private weights, if configured
+        # Target weights are deliberately not in the repository (D009). When the
+        # secret exists the weight-dependent panels build; when it does not they
+        # render "not configured" rather than guessing.
+        env:
+          WEIGHTS_YAML: ${{ secrets.WEIGHTS_YAML }}
+        run: |
+          if [ -n "$WEIGHTS_YAML" ]; then
+            printf '%s' "$WEIGHTS_YAML" > config/weights.yaml
+            echo "weights configured"
+          else
+            echo "no weights secret; weight-dependent panels will say so"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+
+      - name: Commit the refreshed store
+        run: |
+          rsync -a --exclude='.git' --exclude='raw' data/ data-branch/
+          cd data-branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          # --quiet exits non-zero when something IS staged, so this commits on
+          # change and stays silent on a day with no new data.
+          git diff --cached --quiet && echo "nothing new today" && exit 0
+          git commit -m "Data update ($(date -u +%Y-%m-%d))"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

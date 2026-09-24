@@ -129,11 +129,17 @@ def _fit_group(x: np.ndarray, y: np.ndarray, taus: tuple[float, ...]
         offset = j * n
         index = np.arange(n) + offset
         # c_tau
-        rows.extend(index); cols.extend([j] * n); values.extend(np.ones(n))
+        rows.extend(index)
+        cols.extend([j] * n)
+        values.extend(np.ones(n))
         # a_tau
-        rows.extend(index); cols.extend([k + j] * n); values.extend(x)
+        rows.extend(index)
+        cols.extend([k + j] * n)
+        values.extend(x)
         # shared b
-        rows.extend(index); cols.extend([2 * k] * n); values.extend(x**2)
+        rows.extend(index)
+        cols.extend([2 * k] * n)
+        values.extend(x**2)
         # +u+
         rows.extend(index)
         cols.extend(n_params + index)

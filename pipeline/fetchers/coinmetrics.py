@@ -16,7 +16,6 @@ approximated.
 
 from __future__ import annotations
 
-import datetime as dt
 import time
 
 import polars as pl

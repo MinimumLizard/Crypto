@@ -163,7 +163,7 @@ def midterm_monthly(dates, closes: np.ndarray) -> dict:
             # The month's return is measured from the previous month's close
             # where one exists, so months join up rather than each starting fresh.
             previous = frame.filter(
-                (pl.col("date") < month_frame["date"][0]))
+                pl.col("date") < month_frame["date"][0])
             base = float(previous["close"][-1]) if previous.height else first
             months[str(month)] = round((last / base - 1) * 100, 2)
         rows.append({"year": year, "months": months})

@@ -81,7 +81,10 @@ def detrended(dates, values: np.ndarray) -> np.ndarray:
         x, y = time_index[i], log_values[i]
         if not np.isnan(y):
             count += 1
-            sum_x += x; sum_y += y; sum_xx += x * x; sum_xy += x * y
+            sum_x += x
+            sum_y += y
+            sum_xx += x * x
+            sum_xy += x * y
         if count >= MIN_RANK_OBSERVATIONS:
             denominator = count * sum_xx - sum_x * sum_x
             if denominator != 0:
