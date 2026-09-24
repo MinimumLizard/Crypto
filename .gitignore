@@ -44,3 +44,6 @@ Thumbs.db
 
 # Target weights are private; only the example schema is committed.
 config/weights.yaml
+
+# History store lives on the orphan `data` branch (D008), not on main.
+data/

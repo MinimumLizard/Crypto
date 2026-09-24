@@ -181,3 +181,65 @@ Note: "Melbourne" and "Colombo" still appear twice in the public copy, in §3
 (schedule timing) and §6.1 (the three clocks). Those are outside §1.1 and are
 product requirements — the site shows those clocks on every page — so they were
 left. Say if you want them generalised.
+
+---
+
+## 2026-09-24 — D011: the Cowen memos arrived; what they changed
+
+Five memos are now in `private/reference/` (gitignored, never published). They
+are confidential: they are read **only** to learn which metrics and framings
+matter. No memo text, chart, figure or proprietary metric name is reproduced on
+the site. In particular the site does **not** use the names "Cowen corridor",
+"ITC Liquidity Risk", "Terminal price" or any ITC branding; our own
+constructions get descriptive names, per §7.3.
+
+They were PDFs with an ordinary text layer, not the ZIP-of-pages the brief
+warned about, so extraction was straightforward.
+
+What they changed, concretely:
+
+1. **ROI means a price ratio, not a percentage return.** 0.520 from peak means
+   price is at 52% of the peak. Every ROI-style figure on the cycle page follows
+   that convention and says so, because the two readings differ by a sign and a
+   rebase and would otherwise be silently wrong.
+2. **The risk scorecard's shape is confirmed** — rows normalised 0–1, columns
+   Current / 6M / 1Y / 4Y, grouped into headline, valuation-and-on-chain, and
+   sentiment-and-social families. That is what `/btc-cycle` builds.
+3. **The liquidity composite's components are named**: policy rates, balance
+   sheet, monetary aggregates, the front end of the curve, the dollar, and real
+   yields — with the memo's own emphasis that **level and direction are
+   different things**. Our composite therefore shows the level *and* the 13-week
+   change, never just one.
+4. **The business-cycle composite splits into three families** — employment,
+   income and output, production and investment — all FRED-sourceable.
+5. **New cycle analogs worth building**, all pure price maths and therefore free:
+   ROI-from-peak across cycles with mean and ±1σ bands; ROI-from-prior-bottom;
+   days-since-peak and days-since-bottom counters against prior cycles;
+   midterm-year monthly return table; presidential-term paths rebased to 100.
+6. **Dominance must exclude stablecoins** to be readable, because stablecoin cap
+   is now large enough to dilute the trend. We show both and default to ex-stables.
+7. **A cumulative advance-decline line trends down by construction** in a long
+   decline, so its level is partly a function of duration. The panel says so.
+
+Metrics the memos use that we **cannot** source free, and will not fake:
+`RHODL ratio`, `supply in profit/loss`, `HODL waves`, `terminal price` and
+`balanced price` all need UTXO age bands or transferred value, which the
+CoinMetrics community tier does not serve. Those rows appear in the scorecard as
+**"source unavailable: needs paid on-chain data"** rather than being dropped
+silently or approximated with something that merely resembles them.
+
+---
+
+## 2026-09-24 — D012: remaining §12 questions, decided autonomously
+
+The owner asked me to use full autonomy rather than answer the rest. Decided:
+
+| Question | Decision | Reversible by |
+|---|---|---|
+| Q2 Keys | Nothing is built that *requires* a key. Every keyed source degrades to "needs a key: <NAME>" on `/source-health` with the exact registration URL. FRED, CoinGecko Demo, CMC and Telegram are wired and read from env; absent, their panels say so. | Adding the secret |
+| Q3 Parity values | None exist yet. The engine is implemented exactly to §7.1 and ships with a golden-test harness holding **zero** golden values, so the parity test is `skip`, never `pass`. The site says "parity unverified — no TradingView reference supplied". | Dropping values into `tests/golden/minilizard_parity.yaml` |
+| Q4 Order size | `$2,000` default in `config/portfolio_prefs.yaml`, used only for slippage and gas-threshold display. | Editing one line |
+| Q5 Markets/themes | The brief's default GDELT themes; Polymarket and Kalshi slugs are **discovered at fetch time** by searching their APIs for the brief's four topics, rather than hard-coded slugs that rot. | `config/markets.yaml` |
+| Q6 Alerts | Quiet hours 22:00–07:00 in the owner's local zone, digest 07:30. | `config/alerts.yaml` |
+| Q7 Geoblocks | **Answered by evidence: no self-hosted runner or Worker is needed.** `data-api.binance.vision` and HL `predictedFundings` cover everything US egress blocks. | n/a |
+| Buy-order gap | **Not invented.** HYPE, LINK and SYRUP are absent from §4.2's buy order, so the deployment tracker renders them as `unplaced — no position in the buy order` and the next-buy calculation skips them. Inventing an order would be inventing a trading rule, which §14 forbids. | Adding them to `buy_order` |

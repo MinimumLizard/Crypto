@@ -1,0 +1,28 @@
+# MiniLizard parity: TradingView reference values.
+#
+# EMPTY ON PURPOSE. SPEC §7.1 sets a parity target of +/-0.5 points against
+# TradingView, and no reference readings have been supplied, so there is
+# nothing to test against. While this list is empty the parity test SKIPS and
+# the site states that parity is unverified. A green suite must never be
+# readable as evidence of a parity that was never measured.
+#
+# To activate, add rows. The engine runs on Binance daily bars and scores the
+# CONFIRMED close, so `date` is the bar whose close produced the reading.
+#
+# cases:
+#   - symbol: BTC
+#     date: 2026-09-18
+#     score: 42.5
+#     regime: BULL          # optional
+#     blocks:               # optional, but far more useful when a case fails:
+#       structure: 21.0     # it localises the disagreement to one block
+#       trend: 14.0
+#       momentum: 6.5
+#       volume: 5.0
+#       penalty: 0.0
+#
+# Most useful set: BTC and ETH (V8) plus SOL, AAVE and UNI (V10), about five
+# dates each, chosen to span one regime flip, one strong trend and one chop
+# stretch. Flips are where implementations diverge.
+
+cases: []
