@@ -168,6 +168,13 @@ def build_btc_cycle() -> dict:
             "mu": round(fitted.mu, 4),
             "curvature": {k: round(v, 4) for k, v in fitted.curvature.items()},
             "n": fitted.n,
+            "fitted_through": fitted.fitted_through,
+            "curvature_note": (
+                "These come from the fit over the FULL sample, through "
+                f"{fitted.fitted_through}. The replication gate below refits "
+                "through 2026-05-29 to match the published window, so its "
+                "figures differ slightly. Both are shown rather than one being "
+                "quietly reused for the other."),
             "bands_today": {str(tau): round(float(bands[tau][0]), 2)
                             for tau in quantile_model.TAUS},
             "position_pct": round(fitted.position(today_days, float(closes[-1])), 2),

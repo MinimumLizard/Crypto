@@ -11,6 +11,15 @@ function panel(title: string, asOf: string | null, body: string, howto?: string)
     <div class="body">${howto ? `<p class="howto">${escapeHtml(howto)}</p>` : ''}${body}</div></section>`;
 }
 
+/** 1st, 2nd, 3rd, 10th — "1th percentile" is the kind of detail that makes a
+ *  page look unfinished even when the number behind it is right. */
+function ordinal(value: number): string {
+  const n = Math.round(value);
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
 function quantilePanel(q: any): string {
   if (!q) return panelError('not computed');
   if (!q.available) {
@@ -25,7 +34,7 @@ function quantilePanel(q: any): string {
       <td><span class="badge ${c.passed ? 'ok' : 'bad'}"><i></i>${c.passed ? 'pass' : 'fail'}</span></td></tr>`).join('');
 
   const bands = Object.entries(q.bands_today).map(([tau, value]: [string, any]) => `
-    <tr><td>${(Number(tau) * 100).toFixed(0)}th percentile</td>
+    <tr><td>${ordinal(Number(tau) * 100)} percentile</td>
         <td class="num">${price(value, '$')}</td></tr>`).join('');
 
   return `
@@ -39,7 +48,7 @@ function quantilePanel(q: any): string {
         <div class="n">daily closes · μ = ${q.mu}</div></div>
       <div class="gauge"><div class="k">Tail curvature</div>
         <div class="v" style="font-size:16px">lo ${q.curvature.lo} · hi ${q.curvature.hi}</div>
-        <div class="n">shared within each tail group</div></div>
+        <div class="n">shared within each tail group · full sample to ${escapeHtml(q.fitted_through ?? '—')}</div></div>
     </div>
     <div class="grid2" style="margin-top:12px">
       <div><h3 style="font-size:12px;color:var(--ink-2);margin:0 0 6px">Bands today</h3>
@@ -50,6 +59,7 @@ function quantilePanel(q: any): string {
             <th class="num">Diff</th><th></th></tr></thead>
           <tbody>${checks}</tbody></table></div></div>
     </div>
+    ${q.curvature_note ? `<p class="howto">${escapeHtml(q.curvature_note)}</p>` : ''}
     <p class="howto caveat">${escapeHtml(q.how_to_read)}</p>`;
 }
 
@@ -136,7 +146,14 @@ function midtermPanel(m: any): string {
   return `<div class="tablewrap"><table>
     <thead><tr><th>Year</th>${months.map((m2) => `<th class="num">${m2}</th>`).join('')}</tr></thead>
     <tbody>${m.rows.map((row: any) => `<tr><td><strong>${row.year}</strong></td>
-      ${months.map((_, i) => cell(row.months[String(i + 1)])).join('')}</tr>`).join('')}
+      ${months.map((_, i) => {
+        const key = String(i + 1);
+        const isPartial = (row.partial ?? []).includes(key);
+        const inner = cell(row.months[key]);
+        return isPartial
+          ? inner.replace('</td>', ' <span class="badge warn" title="month still running"><i></i>partial</span></td>')
+          : inner;
+      }).join('')}</tr>`).join('')}
     </tbody></table></div>
     <p class="howto caveat">${escapeHtml(m.how_to_read)}</p>`;
 }

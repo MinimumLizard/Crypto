@@ -153,11 +153,18 @@ def midterm_monthly(dates, closes: np.ndarray) -> dict:
         if year_frame.is_empty():
             continue
         months: dict[str, float | None] = {}
+        partial: list[str] = []
+        last_date = dates[-1]
         for month in range(1, 13):
             month_frame = year_frame.filter(pl.col("month") == month)
             if month_frame.height < 2:
                 months[str(month)] = None
                 continue
+            # A month still running is not a comparable observation, so it is
+            # flagged rather than shown alongside completed months as though it
+            # were one.
+            if year == last_date.year and month == last_date.month:
+                partial.append(str(month))
             first = float(month_frame["close"][0])
             last = float(month_frame["close"][-1])
             # The month's return is measured from the previous month's close
@@ -166,13 +173,17 @@ def midterm_monthly(dates, closes: np.ndarray) -> dict:
                 pl.col("date") < month_frame["date"][0])
             base = float(previous["close"][-1]) if previous.height else first
             months[str(month)] = round((last / base - 1) * 100, 2)
-        rows.append({"year": year, "months": months})
+        rows.append({"year": year, "months": months, "partial": partial})
     return {
         "rows": rows,
-        "how_to_read": ("Bitcoin's monthly returns in midterm election years. "
-                        "Three completed observations is enough to describe a "
-                        "tendency and not enough to establish one; treat the "
-                        "pattern as a prior, not a rule."),
+        "how_to_read": ("Bitcoin's monthly returns in midterm election years, "
+                        "each measured from the previous month's close. Three "
+                        "completed observations is enough to describe a tendency "
+                        "and not enough to establish one; treat the pattern as a "
+                        "prior, not a rule. A month still running is marked "
+                        "partial. Prices are CoinMetrics reference rates, so "
+                        "early-cycle figures can differ by a point or two from "
+                        "sources using a single exchange."),
     }
 
 

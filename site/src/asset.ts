@@ -66,13 +66,11 @@ function regimePanel(regime: any): string {
         <tr><td>Volume</td><td class="num">${blocks.volume ?? '—'}</td><td class="num">±15</td></tr>
         <tr><td>Extension penalty</td><td class="num">${blocks.penalty ?? '—'}</td><td class="num">±50</td></tr>
       </tbody></table></div>
-    ${substitute ? `<p class="howto caveat"><strong>Substitute venue.</strong>
-       ${escapeHtml(regime.parity_note)}</p>` : ''}
+    <p class="howto caveat"><strong>${substitute ? 'Substitute venue.' : 'Parity unverified.'}</strong>
+      ${escapeHtml(regime.parity_note ?? '')}</p>
     ${regime.cvd_note ? `<p class="howto">${escapeHtml(regime.cvd_note)}</p>` : ''}
     ${regime.no_measured_edge ? `<p class="howto caveat"><strong>No measured edge.</strong>
        The backtest found no edge for this name.</p>` : ''}
-    <p class="howto caveat"><strong>Parity unverified.</strong>
-      ${escapeHtml(regime.parity_note ?? '')}</p>
     ${regime.signals?.length ? `<div class="tablewrap" style="margin-top:10px"><table>
       <thead><tr><th>Recent signals</th><th class="num">Score</th></tr></thead>
       <tbody>${regime.signals.slice().reverse().map((s: any) => `
@@ -131,12 +129,16 @@ async function main(): Promise<void> {
 
   const levels = data.levels ?? {};
   const returns = data.returns ?? {};
-  const venueNote = data.display_venue && data.display_venue !== data.parity_venue
-    ? `Charted on <strong>${escapeHtml(data.display_venue)}</strong> bars, which have the
-       longest history. The regime score uses
-       ${data.parity_venue ? `<strong>${escapeHtml(data.parity_venue)}</strong>` : 'another venue'},
-       because parity is defined there.`
-    : `Charted on <strong>${escapeHtml(data.display_venue ?? '—')}</strong> bars.`;
+  const scoredOn = data.regime?.scored_on;
+  const venueNote = (() => {
+    const charted = `Charted on <strong>${escapeHtml(data.display_venue ?? '—')}</strong> bars`;
+    if (!scoredOn) return `${charted}. No regime score on any venue.`;
+    if (scoredOn === data.display_venue) {
+      return `${charted}, which is also what the regime score uses.`;
+    }
+    return `${charted}, which have the longest history. The regime score uses
+      <strong>${escapeHtml(scoredOn)}</strong> bars.`;
+  })();
 
   root.innerHTML = [
     panel(`${escapeHtml(data.symbol)} · ${escapeHtml(data.name)}`, levels.as_of, `

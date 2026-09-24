@@ -96,6 +96,7 @@ def _regime_for(asset: registry.Asset) -> dict:
         if fallback.height >= ml.WARMUP_BARS:
             series = _score(asset, fallback)
             series["parity"] = "substitute"
+            series["scored_on"] = longest[0]
             series["parity_note"] = (
                 f"Scored on {longest[0]} bars because {reason}. This score is real "
                 f"but is NOT comparable to a TradingView reading, which is drawn "
@@ -108,6 +109,7 @@ def _regime_for(asset: registry.Asset) -> dict:
 
     series = _score(asset, bars)
     series["parity"] = "binance"
+    series["scored_on"] = "binance"
     series["parity_note"] = (
         "Computed on Binance daily bars, the series TradingView draws. Parity "
         "itself is UNVERIFIED: no reference readings have been supplied.")
