@@ -29,8 +29,11 @@ site/dist/
 site/.vite/
 .vite/
 *.tsbuildinfo
-package.json
-package-lock.json
+# Only the throwaway root manifest npm creates for the screenshot tool; the
+# site's own package.json and lockfile ARE committed, and CI's `npm ci`
+# needs the lockfile.
+/package.json
+/package-lock.json
 
 # ---- Pipeline data ----
 # The history store lives on the orphan `data` branch (D008), not on main.
