@@ -20,7 +20,12 @@ evidence is `docs/SOURCES.md`.
 Done: probe built and run from two US locations; `docs/SOURCES.md`;
 `docs/PLAN.md`; draft `config/assets.yaml`; decisions D001–D008.
 
-Waiting on: the §12 questions, registry confirmation, and the two blockers below.
+Answered (D010): public repo + GitHub Pages; weights stay private; USD default
+with an AUD toggle; ETF source hunt continues into P2.
+
+Waiting on: registry confirmation, the remaining §12 questions (keys, parity
+values, markets/themes, quiet hours, the buy-order gap), and the two blockers
+below.
 
 ## Blockers
 
@@ -34,6 +39,8 @@ Waiting on: the §12 questions, registry confirmation, and the two blockers belo
 
 ## Hard rules
 
+- **This repository is PUBLIC.** Assume anything committed is permanent and
+  world-readable. Target weights live in the gitignored `config/weights.yaml`.
 - **Never commit** anything under `private/`, any holding, any dollar amount, any
   secret. `.gitignore` covers `private/`, `.env*`, `config/portfolio.yaml`,
   `content/holdings*.json`. Verify with `git check-ignore -v <path>`.

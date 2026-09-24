@@ -161,3 +161,23 @@ file when it is present and render "not configured" when it is not — never zer
 secret for the weight-dependent panels to build. If you would rather the weights
 were simply public, deleting one `.gitignore` line and moving the block back
 undoes this entirely. §12 Q1 settles it.
+
+---
+
+## 2026-09-24 — D010: answers to the §12 questions (round 1)
+
+| Q | Answer | Consequence |
+|---|---|---|
+| Q1 Hosting | **Public repo + GitHub Pages** | Actions minutes are unlimited, so the 2-hourly refresh costs nothing. Portfolio is browser-only: localStorage + WebCrypto, with JSON import/export. `config/portfolio.yaml` is never used. A P5 test greps the built site for any holding or dollar amount and fails the build if one appears. |
+| D009 Weights | **Stay private** | `config/weights.yaml` remains gitignored; `weights.example.yaml` is committed. Actions needs the real file as a secret before any weight-dependent panel can build. |
+| ETF flows | **Keep hunting** | The panel reads "source unavailable" until a free source is found. Hunting is a P2 task, timeboxed; if it comes back empty the panel stays as-is and this entry is updated rather than the panel being quietly filled with a scrape that breaks. |
+| Q4 Currency | **USD default, AUD toggle** | Every source is USD-native, so the headline numbers carry no conversion error. AUD conversion uses FRED `DEXUSAL` with `open.er-api.com` as the verified fallback, and the rate's own as-of date is shown, because a stale FX rate silently mis-states every figure on the page. |
+
+Because public mode was chosen, `docs/SPEC.md` now holds a redacted copy of the
+brief: §1.1 removed in full, the §4.2 target-weight column removed, and the
+tier-target percentages removed. Verified by diff, not by assumption.
+
+Note: "Melbourne" and "Colombo" still appear twice in the public copy, in §3
+(schedule timing) and §6.1 (the three clocks). Those are outside §1.1 and are
+product requirements — the site shows those clocks on every page — so they were
+left. Say if you want them generalised.
