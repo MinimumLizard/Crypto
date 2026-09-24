@@ -1,0 +1,43 @@
+# ---- Never commit: personal / confidential ----
+private/
+.env
+.env.*
+!.env.example
+*.secret
+secrets.yaml
+config/portfolio.yaml
+content/holdings*.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# ---- Node / site ----
+node_modules/
+site/dist/
+site/.vite/
+.vite/
+*.tsbuildinfo
+
+# ---- Pipeline caches & scratch ----
+.cache/
+data/raw/
+.playwright/
+screenshots/
+test-results/
+playwright-report/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

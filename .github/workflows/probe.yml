@@ -1,0 +1,63 @@
+# Runs the Phase-0 source probe from a GitHub-hosted runner.
+#
+# The point is the COMPARISON, not the run. GitHub's hosted runners egress from
+# US addresses, and several sources this terminal wants (Binance.com, Bybit)
+# refuse US traffic outright. Running the identical probe file here and from a
+# machine outside the US is what tells us which sources need a workaround and
+# which were never actually a problem.
+#
+# Results are printed into the job log AND uploaded as an artifact, so a run can
+# be read without downloading anything.
+
+name: Source probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Limit to these probe groups (space separated), or blank for all"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Where is this runner?
+        # Stamped into the log so a stale artifact can never be mistaken for a
+        # run from somewhere else.
+        run: curl -s https://ipinfo.io/json || true
+
+      - name: Run the probe
+        env:
+          # Every key is optional. A missing key is recorded as "needs a key",
+          # which is itself a probe result worth having.
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          COINGECKO_DEMO_KEY: ${{ secrets.COINGECKO_DEMO_KEY }}
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          uv run tools/probe.py \
+            --location "github-hosted-runner (ubuntu-latest)" \
+            --out docs/probe-runner \
+            ${{ github.event.inputs.only && format('--only {0}', github.event.inputs.only) || '' }}
+
+      - name: Print the write-up into the log
+        run: cat docs/probe-runner.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-runner
+          path: |
+            docs/probe-runner.json
+            docs/probe-runner.md
