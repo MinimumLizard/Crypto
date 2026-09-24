@@ -121,12 +121,17 @@ def failing_for_hours(hours: float = 24.0) -> pl.DataFrame:
     Used by the §8 data alert. A source that has never succeeded counts as
     failing: "we have never got this" is not a healthier state than "we got it
     and then stopped".
+
+    `needs_key` is excluded. A metric the free tier withholds, or an endpoint
+    waiting on a key that has not been registered, is a known and permanent
+    state rather than an outage -- alerting on it every day would bury the one
+    row that means something actually broke.
     """
     frame = load()
     if frame.is_empty():
         return frame
     cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=hours)
-    latest = latest_by_source()
+    latest = latest_by_source().filter(pl.col("status") != "needs_key")
     good = (frame.filter(pl.col("status") == "ok")
                  .sort("fetched_at")
                  .group_by(["source", "dataset"], maintain_order=True)

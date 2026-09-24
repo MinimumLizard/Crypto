@@ -243,3 +243,55 @@ The owner asked me to use full autonomy rather than answer the rest. Decided:
 | Q6 Alerts | Quiet hours 22:00–07:00 in the owner's local zone, digest 07:30. | `config/alerts.yaml` |
 | Q7 Geoblocks | **Answered by evidence: no self-hosted runner or Worker is needed.** `data-api.binance.vision` and HL `predictedFundings` cover everything US egress blocks. | n/a |
 | Buy-order gap | **Not invented.** HYPE, LINK and SYRUP are absent from §4.2's buy order, so the deployment tracker renders them as `unplaced — no position in the buy order` and the next-buy calculation skips them. Inventing an order would be inventing a trading rule, which §14 forbids. | Adding them to `buy_order` |
+
+---
+
+## 2026-09-24 — D013: P1 shipped; what is real and what is not
+
+The pipeline, both engines and the site are built and the daily workflow runs
+end to end. What matters is being precise about which claims are backed by
+measurement and which are not.
+
+**Measured and verified**
+
+- **The quantile replication gate PASSES.** Fitting CoinMetrics BTC `PriceUSD`
+  from 2010 through 2026-05-29 gives μ 7.9928 (published 7.9914), b_HI −0.3245
+  (−0.326), b_LO −0.0236 (−0.024), n 5795 (5788). That is an independent
+  reproduction from a price series the paper did not necessarily use, so §7.2's
+  gate is satisfied and the bands ship. It runs in CI on every daily build.
+- **Prices cross-check across venues.** All 26 assets agree to within 0.21% on
+  a shared date, and UNI's 90-day return was separately confirmed against
+  CoinGecko (+212.7% theirs, +220.5% ours over a slightly different window).
+- **Cycle detection lands on the right dates** — lows at 2015-01-14, 2018-12-15
+  and 2022-11-21, peak 2025-10-06 at ~$124.7k — derived from price alone with
+  no dates hard-coded.
+- **The pipeline runs cold.** From an empty store: 26/26 assets fetched, the
+  2010 backfill spliced, artefacts built, gate passed.
+
+**Explicitly NOT verified**
+
+- **MiniLizard parity.** The engine implements §7.1's prose exactly, including
+  Pine's RMA seeding, mean-absolute-deviation CCI and late pivot confirmation.
+  But no TradingView reference values exist, so the golden file is empty, its
+  test SKIPS rather than passes, and every surface that shows a score says
+  parity is unverified. A green suite must never be readable as evidence of a
+  parity that was never measured.
+- **No backtest has been run**, so no win rate, profit factor or drawdown
+  figure appears anywhere. §7.1's framing — a drawdown filter, not an alpha
+  source — is carried on the asset pages as the brief's own characterisation,
+  attributed as such.
+
+**Coverage gaps, stated rather than filled**
+
+Seven of 26 names cannot be scored on Binance, the venue parity is defined on:
+HYPE, FLUID, GEOD, AZTEC and XMR have no pair at all; AERO has 69 bars and CFG
+192 against the 300 the engine needs. Five fall back to a substitute venue and
+say so on their page; GEOD and AZTEC have no venue with enough history and show
+no score. Binance listed HYPE on 2026-09-24 — the day of this build.
+
+**What screenshot review caught that code review did not**
+
+Three defects were invisible in the source and obvious in the render: the asset
+page claiming a score "uses binance" for a name with zero Binance bars, the
+parity note rendered twice under different headings, and "1th percentile". The
+brief's insistence on inspecting the images is doing real work.

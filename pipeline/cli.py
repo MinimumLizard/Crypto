@@ -334,10 +334,16 @@ def cmd_validate(args) -> int:
         for row in counts.iter_rows(named=True):
             print(f"  {row['status']:<14}{row['len']:>4}")
         stale = health.failing_for_hours(24)
-        if not stale.is_empty():
+        if stale.is_empty():
+            print("  nothing failing beyond its expected lag")
+        else:
             print(f"  {stale.height} source(s) with no success in 24h:")
             for row in stale.iter_rows(named=True):
                 print(f"    {row['source']}/{row['dataset']}: {(row['error'] or '')[:60]}")
+        keyed = latest.filter(pl.col("status") == "needs_key")
+        if not keyed.is_empty():
+            print(f"  {keyed.height} source(s) waiting on a key or a paid tier "
+                  f"(known, not an outage)")
 
     print("\nCAVEATS THAT DO NOT GO AWAY")
     print("  - Roughly four completed BTC cycles exist. Any statement about")
