@@ -15,27 +15,33 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P0 — scaffold and probe. Blocked on the owner.**
+**P1 mostly done. P2 (macro) is next and needs a FRED key.**
 
-Done: probe built and run from two US locations; `docs/SOURCES.md`;
-`docs/PLAN.md`; draft `config/assets.yaml`; decisions D001–D008.
+Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
+pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
+MiniLizard engine; the quantile model **with its replication gate passing**;
+the site (home, BTC cycle, assets, asset pages, source health) with CI and a
+daily build that deploys to Pages. Decisions D001–D012.
 
-Answered (D010): public repo + GitHub Pages; weights stay private; USD default
-with an AUD toggle; ETF source hunt continues into P2.
-
-Waiting on: registry confirmation, the remaining §12 questions (keys, parity
-values, markets/themes, quiet hours, the buy-order gap), and the two blockers
-below.
+Not started: valuation (P3), breadth/sectors/derivatives (P4), portfolio and
+alerts (P5), geopolitics and radar (P6), validation pages (P7). Those routes
+exist and say what they will contain and what is blocking them.
 
 ## Blockers
 
-1. **`private/reference/` does not exist.** No Pine sources, no notes, no Cowen
-   memos, no quantile paper. This blocks the MiniLizard port (SPEC §7.1), the
-   parity tests, the backtest tables (§6.14) and the V8/V10 tier lists. Do not
-   attempt the port from the brief's prose alone — the brief itself says the
-   source wins where they disagree, and the details that decide parity (`ta.ema`
-   seeding, pivot confirmation lag, `na` handling) are not in the prose.
-2. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
+1. **No TradingView parity values.** The engine follows §7.1's prose exactly,
+   but the Pine source it names as ground truth is still absent, and so are
+   reference readings. `tests/golden/minilizard_parity.yaml` is empty on
+   purpose and its test SKIPS — a green suite must never imply a parity that
+   was never measured. The site says "parity unverified" everywhere it matters.
+   Drop cases into that file to activate it. Most useful: BTC and ETH (V8) plus
+   SOL, AAVE, UNI (V10), ~5 dates each spanning a regime flip, a trend and a
+   chop stretch.
+2. **No FRED key**, so the whole macro page (§6.10) has no data and is not
+   built. Everything else degrades gracefully; macro simply has no source.
+3. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
+4. **Pages must be enabled by hand**: Settings → Pages → Source: GitHub Actions.
+   The API path is blocked from this environment.
 
 ## Hard rules
 
@@ -95,22 +101,44 @@ Reasoning in PLAN.md §2.
   parity cannot hold for them. XMR too, on the watchlist.
 - **Actions cron slips at `:00`** — all schedules use off-the-hour minutes.
 - **Scheduled workflows on public repos stop after 60 days idle** — keepalive.
+- **Bars are stored PER VENUE and never merged.** Binance for parity, longest
+  series for charts. Splicing would put a seam into an ATR and a pivot detector.
+  `store.read_ohlcv(sym)` gives the longest; pass a venue for a specific one.
+- **7 of 26 names cannot be scored on Binance** (no pair: HYPE, FLUID, GEOD,
+  AZTEC, XMR; too short: AERO 69 bars, CFG 192). Five fall back to a substitute
+  venue and say so; GEOD and AZTEC have no venue with 300 bars and show no score.
+- **Cycle peaks must be ALL-TIME highs.** Requiring only a retraced running
+  maximum split the 2018 bear in two.
+- **A cross-check must align venues on a shared date.** Comparing each venue's
+  own last row made BTC's pre-2017 backfill look like a 1833% disagreement.
+- **Staleness is cadence-aware.** A daily series ending yesterday is correct,
+  not stale; flagging it trains the eye to ignore the badge.
+- **CoinMetrics returns every value as a string**, and a metric that starts late
+  is simply absent from earlier rows. Build the frame as Utf8 and cast after.
+- **`ruff` treats a bare `package.json` gitignore line as matching every level** —
+  it silently excluded `site/package.json` and broke `npm ci` in CI.
+- **Screenshot review catches what code review does not.** Three real defects
+  (a false venue claim, a duplicated note, "1th percentile") were invisible in
+  the source and obvious in the render. Always look at the images.
 
 ## Commands
 
 ```
-uv run tools/probe.py --location <label>    # source probe; the only thing that runs today
+uv sync --all-extras                       # once
+uv run terminal fetch --only all           # prices | onchain | sentiment | hourly
+uv run terminal build                      # artefacts -> site/public/data
+uv run terminal validate                   # the honesty report; cite it, don't paste it
+uv run tools/probe.py --location <label>   # source probe
+
+cd site && npm ci && npm run build         # the site
+cd site && npx vite preview --port 4173    # then: node tools/shoot.mjs
 ```
 
-Planned once the pipeline exists (PLAN.md §3):
+The store defaults to `data/`; override with `TERMINAL_DATA`. Tests and the
+pipeline both respect it, so a test never touches real data.
 
-```
-uv run terminal fetch --only macro
-uv run terminal build
-uv run terminal site
-uv run terminal validate
-uv run terminal alerts --dry-run
-```
+Screenshots need this container's Chromium:
+`CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome node tools/shoot.mjs`
 
 ## Repository layout
 
