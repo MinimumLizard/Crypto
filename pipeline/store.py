@@ -35,37 +35,78 @@ def _write(path: Path, frame: pl.DataFrame, key: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# OHLCV
+# OHLCV — stored per VENUE, not merged
 # ---------------------------------------------------------------------------
+#
+# Bars from different venues are different data and are never interleaved into
+# one series. Probing on 2026-09-24 made the reason concrete: Binance listed
+# HYPE that same day, AERO in July 2026 and CFG in March 2026, so a
+# parity-first policy leaves those names with 0, 69 and 192 bars against the
+# 300 the regime engine needs to warm up. Coinbase has years of history for all
+# three.
+#
+# Splicing the two would produce a series with a seam in it -- different
+# liquidity, different quote asset, a step in volume -- feeding an ATR and a
+# pivot detector that would both read the seam as a real event. So both are
+# kept, and callers choose:
+#
+#   parity venue  -> Binance, what MiniLizard is defined on (SPEC 7.1)
+#   longest venue -> whatever actually has the history, for charts
+#
+# When they are not the same venue the asset page says so.
 
 OHLCV_KEY = ["date", "interval"]
 
 
-def write_ohlcv(symbol: str, frame: pl.DataFrame) -> int:
-    """Store bars for one symbol. `frame` needs date, o, h, l, c, v, interval, source."""
+def write_ohlcv(symbol: str, venue: str, frame: pl.DataFrame) -> int:
+    """Store bars for one symbol at one venue."""
     if frame.is_empty():
         return 0
     frame = frame.with_columns(pl.col("date").cast(pl.Date))
     total = 0
     for (year,), part in frame.group_by([pl.col("date").dt.year()], maintain_order=True):
-        total += _write(paths.OHLCV / symbol / f"{year}.parquet", part, OHLCV_KEY)
+        total += _write(paths.OHLCV / symbol / venue / f"{year}.parquet", part, OHLCV_KEY)
     return total
 
 
-def read_ohlcv(symbol: str, interval: str = "1d") -> pl.DataFrame:
-    """All stored bars for a symbol, oldest first. Empty frame when unknown."""
+def _empty_ohlcv() -> pl.DataFrame:
+    return pl.DataFrame(schema={
+        "date": pl.Date, "open": pl.Float64, "high": pl.Float64, "low": pl.Float64,
+        "close": pl.Float64, "volume": pl.Float64, "interval": pl.Utf8,
+        "source": pl.Utf8})
+
+
+def venues(symbol: str) -> list[str]:
+    """Which venues we hold bars for, longest history first."""
     directory = paths.OHLCV / symbol
     if not directory.exists():
-        return pl.DataFrame(schema={"date": pl.Date, "open": pl.Float64, "high": pl.Float64,
-                                    "low": pl.Float64, "close": pl.Float64,
-                                    "volume": pl.Float64, "interval": pl.Utf8,
-                                    "source": pl.Utf8})
+        return []
+    counts = []
+    for venue_dir in directory.iterdir():
+        if not venue_dir.is_dir():
+            continue
+        rows = sum(pl.read_parquet(p).height for p in venue_dir.glob("*.parquet"))
+        counts.append((rows, venue_dir.name))
+    return [name for _, name in sorted(counts, reverse=True)]
+
+
+def read_ohlcv(symbol: str, venue: str | None = None,
+               interval: str = "1d") -> pl.DataFrame:
+    """Bars for a symbol. `venue=None` returns whichever venue has most history."""
+    if venue is None:
+        available = venues(symbol)
+        if not available:
+            return _empty_ohlcv()
+        venue = available[0]
+    directory = paths.OHLCV / symbol / venue
+    if not directory.exists():
+        return _empty_ohlcv()
     parts = sorted(directory.glob("*.parquet"))
     if not parts:
-        return read_ohlcv.__wrapped__(symbol) if hasattr(read_ohlcv, "__wrapped__") else pl.DataFrame()
+        return _empty_ohlcv()
     frame = pl.concat([pl.read_parquet(p) for p in parts], how="diagonal_relaxed")
-    return frame.filter(pl.col("interval") == interval).unique(
-        subset=["date"], keep="last").sort("date")
+    return (frame.filter(pl.col("interval") == interval)
+                 .unique(subset=["date"], keep="last").sort("date"))
 
 
 def known_symbols() -> list[str]:
