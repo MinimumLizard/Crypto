@@ -1,0 +1,36 @@
+# Target weights — EXAMPLE. Copy to config/weights.yaml and fill in.
+#
+# GITIGNORED ON PURPOSE. This repository is public and §12 asks for these
+# weights to be kept out of public material. `config/assets.yaml` holds the
+# identity and venue data, which is not sensitive; this file holds the book.
+#
+# The pipeline reads this when present. When it is absent — a fresh clone, or
+# a contributor who is not you — the weight-dependent panels (drift, tier
+# totals, sector cap, next buy) render as "not configured" rather than
+# guessing or showing zeros.
+
+tier_targets: {1: 65, 2: 22, 3: 13}
+sector_cap_pct: 20
+
+targets:
+  BTC: 0
+  SOL: 0
+  AERO: 0
+  UNI: 0
+  ZEC: 0
+  AAVE: 0
+  HYPE: 0
+  LINK: 0
+  RAY: 0
+  LDO: 0
+  SYRUP: 0
+  CFG: 0
+  PUMP: 0
+  FLUID: 0
+  MORPHO: 0
+  ONDO: 0
+  TAO: 0
+  GEOD: 0
+  AZTEC: 0
+  DUSK: 0
+  POLYX: 0

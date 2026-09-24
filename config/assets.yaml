@@ -1,0 +1,591 @@
+# Asset registry — DRAFT for confirmation (SPEC §4.1)
+#
+# NOTHING depends on this file yet. The brief requires it be shown and confirmed
+# before any metric is computed from it, so this is a proposal, not a decision.
+#
+# Identity is resolved by `coingecko_id` and contract address, NEVER by ticker.
+# That is not a stylistic preference: probing CoinGecko's 21,550-coin list on
+# 2026-09-24 found 7 live coins with the symbol SKY (one of them a Solana
+# memecoin), 4 with PUMP, 5 with HYPE and 3 with TAO. Two of the book's names
+# also have ids that do not resemble their ticker at all:
+#     FLUID -> instadapp        (the token renamed, the CoinGecko id did not)
+#     CFG   -> centrifuge-2     ("centrifuge" is the OLD, dead entry)
+#     MORPHO-> morpho           ("morpho-2" is "Legacy Morpho")
+#     PUMP  -> pump-fun         ("pump" is an unrelated Blast token)
+# Resolving any of these by ticker would silently price the wrong asset.
+#
+# FIELD NOTES
+#   defillama: DefiLlama nests protocols under a PARENT. Fees/revenue must be
+#     read from the parent slug, which aggregates the versions; listing the
+#     children and summing them double-counts. `llama_parent` is the slug to
+#     query; `llama_children` is recorded only so the aggregate can be audited.
+#   binance_spot: null means NO Binance pair exists. That matters beyond data
+#     sourcing — MiniLizard (§7.1) is DEFINED on Binance bars, so a name with
+#     no Binance pair cannot be parity-tested and its regime score is computed
+#     on a documented substitute. Those names are flagged `parity: substitute`.
+#   coinmetrics: only BTC and ETH have community-tier coverage worth having.
+#
+# VERIFICATION STATUS as of 2026-09-24, from live calls:
+#   - coingecko_id + contracts: verified against /coins/list?include_platform=true
+#   - binance_spot: verified against data-api.binance.vision exchangeInfo (TRADING)
+#   - coinbase: verified against api.exchange.coinbase.com/products (online)
+#   - hl_perp / hl_spot: verified against Hyperliquid metaAndAssetCtxs + spotMeta
+#   - llama_parent: verified to return 200 on /summary/fees/{slug}
+#   - sectors and tiers: taken from the brief §4.2 verbatim, unverified
+#   - TARGET WEIGHTS ARE NOT IN THIS FILE. This repository is public, and §12
+#     asks for the §4.2 weights to be redacted from anything public, so they
+#     live in `config/weights.yaml`, which is gitignored. See D009 — if you are
+#     happy for the weights to be public, moving them back is a one-line change.
+#   - custody / gas / thesis / triggers: PROPOSED BY ME — these need your review
+
+meta:
+  drafted: 2026-09-24
+  status: awaiting-confirmation
+  tier_targets: {1: 65, 2: 22, 3: 13}   # percent
+  sector_cap_pct: 20
+
+# ---------------------------------------------------------------------------
+# Benchmarks — held separately from the 21-name book (§4.2)
+# ---------------------------------------------------------------------------
+benchmarks:
+  - symbol: BTC
+    name: Bitcoin
+    coingecko_id: bitcoin
+    coinmetrics_id: btc
+    chains: {bitcoin: native}
+    binance_spot: BTCUSDT
+    coinbase: BTC-USD
+    hl_perp: BTC
+    hl_spot: null
+    sector: Hard money
+    minilizard_variant: V8          # §7.1: V8 on BTC/ETH
+    extension_threshold_pct: 5      # §7.1: 5% for BTC/ETH, 12% elsewhere
+    parity: binance
+    notes: >-
+      Long history for the §7.2 quantile fit comes from CoinMetrics PriceUSD
+      (2010-07-18 onward), not Binance, which only starts in 2017.
+
+  - symbol: ETH
+    name: Ethereum
+    coingecko_id: ethereum
+    coinmetrics_id: eth
+    chains: {ethereum: native}
+    binance_spot: ETHUSDT
+    coinbase: ETH-USD
+    hl_perp: ETH
+    hl_spot: null
+    sector: Layer 1
+    llama_parent: null              # chain-level fees, not a protocol slug
+    minilizard_variant: V8
+    extension_threshold_pct: 5
+    parity: binance
+
+# ---------------------------------------------------------------------------
+# The book (§4.2, locked 24 Sep 2026)
+# ---------------------------------------------------------------------------
+book:
+
+  # ---- Tier 1: Core (target 65%) ----
+  - symbol: SKY
+    name: Sky
+    coingecko_id: sky
+    tier: 1
+    sector: Stablecoin & credit
+    chains:
+      ethereum: "0x56072c95faa701256059aa122697b133aded9279"
+    binance_spot: SKYUSDT
+    coinbase: SKY-USD
+    hl_perp: SKY
+    hl_spot: null
+    llama_parent: sky
+    llama_children: [sky-lending, sky-money, sky-rwa]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    quality_flags: [governance-switchable-capture]
+    watch_triggers:
+      - "Surplus buffer reaches its $150m target (buyback allocation steps back up)"
+    thesis: >-
+      Largest weight in the book. Holders' revenue is live and non-zero
+      (probed 2026-09-24). DefiLlama files its children under parent#maker;
+      the `sky` parent slug is the one that returns the right aggregate.
+
+  - symbol: SOL
+    name: Solana
+    coingecko_id: solana
+    tier: 1
+    sector: Layer 1
+    chains: {solana: native}
+    binance_spot: SOLUSDT
+    coinbase: SOL-USD
+    hl_perp: SOL
+    hl_spot: null
+    llama_parent: null              # chain: use chain fees, not a protocol slug
+    custody_class: solana
+    gas_threshold_usd: 50
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    chain_metrics: true             # §6.4 chain-level panel incl. Metcalfe (fragile)
+    thesis: First in the buy order.
+
+  - symbol: AERO
+    name: Aerodrome Finance
+    coingecko_id: aerodrome-finance
+    tier: 1
+    sector: DeFi - DEX
+    chains: {base: "0x940181a94a35a4569e4529a3cdfb74e38fd98631"}
+    binance_spot: AEROUSDT
+    coinbase: AERO-USD
+    hl_perp: AERO
+    hl_spot: null
+    llama_parent: aerodrome
+    llama_children: [aerodrome-v1, aerodrome-slipstream, aerodrome-ignition]
+    custody_class: evm-l2
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    sector_kpis: [dex_volume, take_rate, holder_capture, chain_dex_share]
+
+  - symbol: UNI
+    name: Uniswap
+    coingecko_id: uniswap
+    tier: 1
+    sector: DeFi - DEX
+    chains:
+      ethereum: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
+      unichain: "0x8f187aa05619a017077f5308904739877ce9ea21"
+    binance_spot: UNIUSDT
+    coinbase: UNI-USD
+    hl_perp: UNI
+    hl_spot: null
+    llama_parent: uniswap
+    llama_children: [uniswap-v1, uniswap-v2, uniswap-v3, uniswap-v4]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    quality_flags: [governance-switchable-capture]
+    sector_kpis: [dex_volume, take_rate, holder_capture, chain_dex_share]
+
+  - symbol: ZEC
+    name: Zcash
+    coingecko_id: zcash
+    tier: 1
+    sector: Privacy
+    chains: {zcash: native}
+    binance_spot: ZECUSDT
+    coinbase: ZEC-USD
+    hl_perp: ZEC
+    hl_spot: null
+    llama_parent: null
+    custody_class: native-chain
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    chain_metrics: true
+    sector_kpis: [shielded_supply]
+    thesis: Hard-money regime name alongside BTC, XMR and gold.
+
+  - symbol: AAVE
+    name: Aave
+    coingecko_id: aave
+    tier: 1
+    sector: Lending
+    chains:
+      ethereum: "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
+      base: "0x63706e401c06ac8513145b7687a14804d17f814b"
+    binance_spot: AAVEUSDT
+    coinbase: AAVE-USD
+    hl_perp: AAVE
+    hl_spot: null
+    llama_parent: aave
+    llama_children: [aave-v2, aave-v3, aave-v4]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    quality_flags: [governance-switchable-capture, governance-concentration]
+    open_item: >-
+      DefiLlama reported dailyHoldersRevenue total24h = 0 and total30d = 0 on
+      2026-09-24 over 2,121 days of series. Aave's buyback is publicly known,
+      so the likely explanation is that DefiLlama does not attribute it to this
+      slug rather than that no value accrues. MUST be resolved before any P/E
+      or net-holder-yield number is shown for AAVE.
+    sector_kpis: [deposits, active_loans, utilisation, reserve_factor_revenue, buybacks]
+
+  - symbol: HYPE
+    name: Hyperliquid
+    coingecko_id: hyperliquid
+    tier: 1
+    sector: Exchange / perp DEX
+    chains: {hyperliquid: "0x0d01dc56dcaaca66ad901c959b4011ec"}
+    binance_spot: HYPEUSDT
+    coinbase: HYPE-USD
+    hl_perp: HYPE
+    hl_spot: HYPE
+    llama_parent: hyperliquid
+    llama_children: [hyperliquid-perps, hyperliquid-spot-orderbook, hyperliquid-hlp]
+    custody_class: hyperliquid
+    gas_threshold_usd: 50
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    sector_kpis: [perp_volume, oi, fees, af_buybacks_vs_emissions, binance_volume_share, usdc_bridged]
+    thesis: >-
+      Highest holders' revenue in the book by a wide margin when probed
+      ($2.1m/24h, $59m/30d on 2026-09-24).
+
+  - symbol: LINK
+    name: Chainlink
+    coingecko_id: chainlink
+    tier: 1
+    sector: Tokenization
+    chains: {ethereum: "0x514910771af9ca656af840dff83e8264ecf986ca"}
+    binance_spot: LINKUSDT
+    coinbase: LINK-USD
+    hl_perp: LINK
+    hl_spot: null
+    llama_parent: chainlink
+    llama_children: [chainlink-requests, chainlink-staking]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    equity_comps: [SPGI, MSCI, FDS]
+    sector_kpis: [rwa_tvl]
+
+  - symbol: RAY
+    name: Raydium
+    coingecko_id: raydium
+    tier: 1
+    sector: DeFi - DEX
+    chains: {solana: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"}
+    binance_spot: RAYUSDT
+    coinbase: RAY-USD
+    hl_perp: null                   # no Hyperliquid perp
+    hl_spot: null
+    llama_parent: raydium
+    llama_children: [raydium-amm, raydium-perps]
+    custody_class: solana
+    gas_threshold_usd: 50
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    open_item: >-
+      Market cap disagreement (one source $163m, another $504m). The buy order
+      holds RAY until this is verified. This is the motivating case for the
+      §6.4 two-source cap cross-check.
+    sector_kpis: [dex_volume, take_rate, holder_capture, chain_dex_share]
+
+  # ---- Tier 2: Satellite (target 22%) ----
+  - symbol: LDO
+    name: Lido DAO
+    coingecko_id: lido-dao
+    tier: 2
+    sector: Liquid staking
+    chains: {ethereum: "0x5a98fcbea516cf06857215779fd812ca3bef1b32"}
+    binance_spot: LDOUSDT
+    coinbase: LDO-USD
+    hl_perp: LDO
+    hl_spot: null
+    llama_parent: lido              # no parent wrapper; `lido` is the slug itself
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    sector_kpis: [steth_share_of_staked_eth, revenue]
+
+  - symbol: SYRUP
+    name: Maple Finance
+    coingecko_id: syrup
+    tier: 2
+    sector: Stablecoin & credit
+    chains:
+      ethereum: "0x643c4e15d7d62ad0abec4a9bd4b001aa3ef52d66"
+      base: "0x688aee022aa544f150678b8e5720b6b96a9e9a2f"
+    binance_spot: SYRUPUSDT
+    coinbase: SYRUP-USD
+    hl_perp: SYRUP
+    hl_spot: null
+    llama_parent: maple-finance     # NOT `maple`, which is only the lending child
+    llama_children: [maple, maple-rwa]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    minilizard_no_measured_edge: true   # §6.3: backtest found no edge
+    sector_kpis: [loan_book, buyback_allocation]
+
+  - symbol: CFG
+    name: Centrifuge
+    coingecko_id: centrifuge-2
+    tier: 2
+    sector: Tokenization
+    chains: {ethereum: "0xcccccccccc33d538dbc2ee4feab0a7a1ff4e8a94"}
+    binance_spot: CFGUSDT
+    coinbase: CFG-USD
+    hl_perp: null
+    hl_spot: null
+    llama_parent: centrifuge
+    llama_children: [centrifuge-protocol]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    open_item: "holdersRevenue probed at 0 — confirm whether CFG captures value at all."
+    sector_kpis: [rwa_tvl]
+
+  - symbol: PUMP
+    name: Pump.fun
+    coingecko_id: pump-fun          # NOT `pump` (an unrelated Blast token)
+    tier: 2
+    sector: Consumer
+    chains: {solana: "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"}
+    binance_spot: PUMPUSDT
+    coinbase: PUMP-USD
+    hl_perp: PUMP
+    hl_spot: PUMP
+    llama_parent: pump              # parent#pump = pump.fun + pumpswap
+    llama_children: [pump.fun, pumpswap]
+    custody_class: solana
+    gas_threshold_usd: 50
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    sector_kpis: [launchpad_revenue, buybacks, solana_launch_share]
+
+  - symbol: FLUID
+    name: Fluid
+    coingecko_id: instadapp         # the token renamed; the id did not
+    tier: 2
+    sector: Lending
+    chains:
+      ethereum: "0x6f40d4a6237c257fff2db00fa0510deeecd303eb"
+      base: "0x61e030a56d33e8260fdd81f03b162a79fe3449cd"
+    binance_spot: null              # NO Binance pair — see `parity`
+    coinbase: FLUID-USD
+    hl_perp: null
+    hl_spot: null
+    llama_parent: fluid
+    llama_children: [fluid-lending, fluid-dex, fluid-lite, fluid-dex-lite]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: substitute              # Coinbase FLUID-USD; NOT TradingView-comparable
+    quality_flags: [audit-and-admin-keys-unverified]
+    fails_gas_threshold: true       # §6.12: below threshold at small book sizes
+    open_item: "holdersRevenue probed at 0. Audit and admin-key status unverified."
+    sector_kpis: [deposits, active_loans, utilisation, buybacks]
+
+  - symbol: MORPHO
+    name: Morpho
+    coingecko_id: morpho            # NOT `morpho-2` ("Legacy Morpho")
+    tier: 2
+    sector: Lending
+    chains:
+      ethereum: "0x58d97b57bb95320f9a05dc918aef65434969c2b2"
+      base: "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
+    binance_spot: MORPHOUSDT
+    coinbase: MORPHO-USD
+    hl_perp: MORPHO
+    hl_spot: null
+    llama_parent: morpho
+    llama_children: [morpho-blue, morpho-midnight]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    quality_flags: [vesting-contract-unverified]
+    open_item: "Fee switch not yet on — holdersRevenue probed at 0."
+    sector_kpis: [deposits, active_loans, utilisation, buybacks]
+
+  - symbol: ONDO
+    name: Ondo
+    coingecko_id: ondo-finance
+    tier: 2
+    sector: Tokenization
+    chains: {ethereum: "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"}
+    binance_spot: ONDOUSDT
+    coinbase: ONDO-USD
+    hl_perp: ONDO
+    hl_spot: null
+    llama_parent: ondo-finance
+    llama_children: [ondo-yield-assets, ondo-global-markets, ondo-perps]
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    minilizard_no_measured_edge: true
+    quality_flags: [vesting-contract-unverified]
+    fails_gas_threshold: true
+    open_item: "Governance vote pending. holdersRevenue probed at 0."
+    sector_kpis: [rwa_tvl, product_aum]
+
+  - symbol: TAO
+    name: Bittensor
+    coingecko_id: bittensor
+    tier: 2
+    sector: AI & compute
+    chains: {bittensor: native}
+    binance_spot: TAOUSDT
+    coinbase: TAO-USD
+    hl_perp: TAO
+    hl_spot: null
+    llama_parent: null              # /summary/fees/bittensor returns 400 (verified)
+    custody_class: native-chain
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    data_quality_grade: F           # no revenue data of any kind
+    quality_flags: [vesting-contract-unverified]
+    sector_kpis: [issuance_usd_vs_revenue]
+
+  # ---- Tier 3: Venture tail (target 13%) ----
+  # Grade F by construction: these are the names the brief says cannot be
+  # measured. They must show "unmeasurable — venture tail", never a multiple.
+  - symbol: GEOD
+    name: Geodnet
+    coingecko_id: geodnet
+    tier: 3
+    sector: DePIN
+    chains:
+      polygon-pos: "0xac0f66379a6d7801d7726d5a943356a172549adb"
+      solana: "7JA5eZdCzztSfQbJvS8aVVxMFfd81Rs9VvwnocV1mKHu"
+    binance_spot: null              # NO Binance pair
+    coinbase: GEOD-USD
+    hl_perp: null
+    hl_spot: null
+    llama_parent: geodnet           # has fee data (probed $17k/24h) — not grade F
+    custody_class: evm-l2
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: substitute              # Coinbase GEOD-USD
+    sector_kpis: [onchain_revenue, burns]
+
+  - symbol: AZTEC
+    name: Aztec
+    coingecko_id: aztec
+    tier: 3
+    sector: Privacy
+    chains:
+      ethereum: "0xa27ec0006e59f245217ff08cd52a7e8b169e62d2"
+      hyperevm: "0x5515b8079793caa680df5391a6ef4c73911a3920"
+    binance_spot: null              # NO Binance pair
+    coinbase: AZTEC-USD
+    hl_perp: AZTEC
+    hl_spot: AZTEC
+    llama_parent: null              # only `aztec-connect` (deprecated v1) exists
+    custody_class: evm-l1
+    gas_threshold_usd: 300
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: substitute              # Hyperliquid AZTEC perp or Coinbase
+    data_quality_grade: F
+    sector_kpis: [shielded_supply]
+
+  - symbol: DUSK
+    name: DUSK
+    coingecko_id: dusk-network
+    tier: 3
+    sector: Tokenization
+    chains:
+      ethereum: "0x940a2db1b7008b6c776d4faaca729d6d4a4aa551"
+      binance-smart-chain: "0xb2bd0749dbe21f623d9baba856d3b0f0e1bfec9c"
+    binance_spot: DUSKUSDT
+    coinbase: null
+    hl_perp: null
+    hl_spot: null
+    llama_parent: null              # no DefiLlama presence at all (verified)
+    custody_class: native-chain
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    data_quality_grade: F
+
+  - symbol: POLYX
+    name: Polymesh
+    coingecko_id: polymesh
+    tier: 3
+    sector: Tokenization
+    chains: {polymesh: native}
+    binance_spot: POLYXUSDT
+    coinbase: null
+    hl_perp: POLYX
+    hl_spot: null
+    llama_parent: null              # no DefiLlama presence at all (verified)
+    custody_class: native-chain
+    gas_threshold_usd: 100
+    minilizard_variant: V10
+    extension_threshold_pct: 12
+    parity: binance
+    data_quality_grade: F
+
+# ---------------------------------------------------------------------------
+# Buy order (§4.2) — referenced by the deployment tracker's "next buy"
+# ---------------------------------------------------------------------------
+buy_order:
+  [SOL, SKY, AERO, UNI, ZEC, AAVE, RAY, GEOD, LDO, CFG, PUMP, AZTEC, DUSK,
+   POLYX, TAO, MORPHO, FLUID, ONDO]
+buy_order_notes:
+  RAY: "Held until the market-cap disagreement is resolved."
+  FLUID: "Last — below the gas threshold at current book size."
+  ONDO: "Last — below the gas threshold at current book size."
+
+# ---------------------------------------------------------------------------
+# Watchlist (§4.3)
+# ---------------------------------------------------------------------------
+watchlist:
+  names:
+  - symbol: VIRTUAL
+    coingecko_id: virtual-protocol
+    binance_spot: VIRTUALUSDT
+    coinbase: VIRTUAL-USD
+    hl_perp: VIRTUAL
+    llama_parent: virtuals-protocol   # UNVERIFIED — confirm before use
+    triggers:
+      - "Two consecutive quarters where the revenue run-rate stops falling"
+      - "Holders' revenue rises above $0"
+  - symbol: TRX
+    coingecko_id: tron
+    binance_spot: TRXUSDT
+    coinbase: null
+    hl_perp: TRX
+    role: "Honest counterexample — kept deliberately."
+  - symbol: XMR
+    coingecko_id: monero
+    binance_spot: null              # delisted from Binance
+    coinbase: null
+    hl_perp: XMR
+    parity: substitute              # Hyperliquid or Kraken
+    role: "Hard-money peer."
+  # Names cut from earlier versions of the book, kept for comparison. Identity
+  # for these is NOT yet resolved — several (JUP, CC, 2Z) are known collisions.
+  cut_from_book: [PENDLE, ENA, JUP, RENDER, PYTH, RAIL, CC, "2Z", ZAMA, KITE]
+
+# ---------------------------------------------------------------------------
+# Sector roll-up
+# ---------------------------------------------------------------------------
+# The tier totals (65/22/13) and the 20% sector cap are checked by
+# `terminal validate` against config/weights.yaml, which is not public. Both
+# checks passed on the drafted book as of 2026-09-24, with DeFi-DEX sitting
+# exactly at the cap.
+#
+# The numbers are deliberately not written out here: this file is public, and a
+# roll-up in a comment is the same disclosure as the weights themselves.
