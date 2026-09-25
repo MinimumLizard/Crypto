@@ -15,7 +15,8 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P1 mostly done. P2 (macro) is next and needs a FRED key.**
+**P1 done and LIVE at https://minimumlizard.github.io/Crypto/.**
+P2 (macro) is next and needs a FRED key.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
@@ -40,8 +41,16 @@ exist and say what they will contain and what is blocking them.
 2. **No FRED key**, so the whole macro page (§6.10) has no data and is not
    built. Everything else degrades gracefully; macro simply has no source.
 3. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
-4. **Pages must be enabled by hand**: Settings → Pages → Source: GitHub Actions.
-   The API path is blocked from this environment.
+4. ~~Pages must be enabled by hand.~~ **Done — the site is live at
+   https://minimumlizard.github.io/Crypto/**, deployed by `daily.yml`. Note the
+   Pages API is blocked from this environment, so any future Pages *setting*
+   change has to be made by hand in Settings → Pages.
+5. **The scheduled daily run has not fired yet.** `daily.yml`'s 00:20 UTC cron
+   did not trigger on its first night; the build that deployed was a manual
+   `workflow_dispatch`. GitHub delays the first schedule on a new repository and
+   drops crons under load, so this may simply settle. If the data branch has no
+   `Data update` commit for a given day, the schedule is the thing to check
+   first, not the pipeline.
 
 ## Hard rules
 

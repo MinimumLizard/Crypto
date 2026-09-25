@@ -32,6 +32,12 @@ let problems = 0;
 for (const [label, width, height] of SIZES) {
   const context = await browser.newContext({
     viewport: { width, height }, deviceScaleFactor: label === 'mobile' ? 2 : 1,
+    // Only when shooting a real https:// origin: this container routes outbound
+    // TLS through a proxy whose CA Chromium does not carry, so every external
+    // navigation fails with ERR_CERT_AUTHORITY_INVALID. That is an artefact of
+    // the sandbox, not of the site. Local preview over http is unaffected and
+    // keeps strict checking.
+    ignoreHTTPSErrors: BASE.startsWith('https://'),
   });
   for (const [name, path] of ROUTES) {
     const page = await context.newPage();
