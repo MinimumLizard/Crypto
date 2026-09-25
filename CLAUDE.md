@@ -41,10 +41,31 @@ exist and say what they will contain and what is blocking them.
 2. **No FRED key**, so the whole macro page (§6.10) has no data and is not
    built. Everything else degrades gracefully; macro simply has no source.
 3. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
-4. ~~Pages must be enabled by hand.~~ **Done — the site is live at
-   https://minimumlizard.github.io/Crypto/**, deployed by `daily.yml`. Note the
-   Pages API is blocked from this environment, so any future Pages *setting*
-   change has to be made by hand in Settings → Pages.
+4. **Pages source is still "Deploy from a branch" and MUST be changed to
+   "GitHub Actions"** at Settings → Pages. Until it is, the site keeps
+   reverting to 404 and there is no way to fix it from here: the Pages API
+   returns 403 through this environment's proxy.
+
+   The mechanism, because it is genuinely confusing. Two publishers are
+   fighting over the same site:
+
+   - `daily.yml` runs `actions/deploy-pages`, which publishes the real built
+     site. This works and has been verified serving live data.
+   - The legacy `pages build and deployment` workflow (it shows up with
+     `event: dynamic` and is not a file in this repo) fires on **every push to
+     the default branch** and republishes that branch's ROOT. The root has no
+     `index.html` — the site lives in `site/` and its build output is
+     gitignored — so it publishes nothing and every path 404s.
+
+   Whichever ran last wins. On 2026-09-25 the Actions deploy put the site up at
+   03:27, and a routine commit at 03:33 triggered the legacy builder, which
+   took it straight back down.
+
+   **So: after any push, the site is 404 until `daily.yml` runs again.** Do not
+   report the site as live off the back of an earlier check — re-verify with
+   `curl -s -o /dev/null -w '%{http_code}' https://minimumlizard.github.io/Crypto/`
+   AFTER the last push of the session. Changing the source to GitHub Actions
+   retires the legacy builder and ends this permanently.
 5. **The scheduled daily run has not fired yet.** `daily.yml`'s 00:20 UTC cron
    did not trigger on its first night; the build that deployed was a manual
    `workflow_dispatch`. GitHub delays the first schedule on a new repository and
