@@ -142,6 +142,13 @@ Reasoning in PLAN.md §2.
 - **CoinGecko unauthenticated 429s within seconds.** The Demo key is required.
 - **Wikimedia and SEC 403 a generic User-Agent.** It must carry contact details.
 - **Stooq is unreachable from US egress** (both locations, https and http).
+- **GDELT signals a BAD QUERY with a 200 and a plain-text body** (D027), which
+  a JSON decoder turns into "Expecting value: line 1 column 1" and which reads
+  like a transport failure. Two rules it enforces: a quoted phrase must be at
+  least 5 characters (`"Iran"`, `"OPEC"`, `"SEC"` are all rejected — unquoted
+  they are fine), and OR'd terms must be inside parentheses. Five of the ten
+  theme queries broke one of these and returned nothing. `tests/test_geopolitics.py`
+  asserts both rules for every theme without a network call.
 - **GDELT 429s** above one request per five seconds, and the limit is PER
   SOURCE IP — from a shared egress five seconds is not enough and a first call
   can need ~40s of backoff (D023). Spacing is 8s, the theme sweep runs to a

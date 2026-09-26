@@ -663,3 +663,36 @@ nothing to build until the file has entries.
 **Universe caveat:** the screener runs over the top 100, which is the slice the
 daily build already fetches. §6.13 asks for rank 1,000, which is four more
 paged calls against a rate-limited key. The panel names the universe it has.
+
+---
+
+## 2026-09-26 — D027: GDELT reports a malformed query as a 200, so five of ten were broken
+
+The health rows for five themes read `Expecting value: line 1 column 1 (char 0)`
+— a JSON decoder failing on the first byte. That message says nothing, and
+because it looked like a transport problem next to the genuine 429s on the
+other themes, it read as more rate limiting.
+
+Checking the body before decoding it said what was actually wrong:
+
+- *"The specified phrase is too short"* — a QUOTED phrase must be at least five
+  characters. `"Iran"`, `"OPEC"`, `"SEC"` and `"CFTC"` were all rejected.
+  Unquoted, the same words are accepted.
+- *"Queries containing OR'd terms must be surrounded by ()"* — a top-level OR
+  is a syntax error.
+
+So half the theme list had never worked and would never have worked, and the
+only reason it was not silent was that the fetcher wrote a health row at all.
+Each corrected query was run against the live API before being committed.
+
+Two changes beyond the queries. The fetcher now inspects the body and puts
+GDELT's own words in the health row, because a rate limit and a permanently
+malformed query need opposite responses and GDELT signals both the same way.
+And both syntax rules are now asserted for every theme in the test suite, which
+needs no network: the test was checked against the five old forms to confirm it
+rejects them and against the five that worked to confirm it does not.
+
+The general lesson is the one D022 also taught from a different direction: when
+a decoder fails on someone else's response, the bytes that arrived are the
+evidence, and discarding them for the decoder's error message throws away the
+only thing that would have explained it.

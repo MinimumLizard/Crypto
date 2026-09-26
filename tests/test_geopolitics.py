@@ -222,3 +222,32 @@ def test_stored_topic_labels_are_re_derived_on_read(tmp_store):
     # The crude market is re-filed under Oil despite its stored label.
     assert "Oil" in odds["topics"]
     assert "Nonsense" not in odds["topics"]
+
+
+@pytest.mark.parametrize(("label", "query"), geo_feed.THEMES)
+def test_theme_queries_obey_gdelt_syntax(label, query):
+    """GDELT reports a malformed query as a 200 with a plain-text body.
+
+    That makes a syntax error look like a transport failure, which is how five
+    of these ten queries returned nothing for days. The two rules it enforces
+    are checkable without a network call, so they are checked here.
+    """
+    import re as _re
+
+    # Rule 1: a quoted phrase must be at least five characters.
+    for phrase in _re.findall(r'"([^"]*)"', query):
+        assert len(phrase) >= 5, (
+            f"{label}: quoted phrase {phrase!r} is {len(phrase)} chars; GDELT "
+            "rejects anything under five")
+
+    # Rule 2: OR'd terms must sit inside parentheses. Walk the string tracking
+    # depth so a top-level OR is caught wherever it appears.
+    depth = 0
+    for token in _re.findall(r'\(|\)|\bOR\b', query):
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+        else:
+            assert depth > 0, f"{label}: a top-level OR must be parenthesised"
+    assert depth == 0, f"{label}: unbalanced parentheses"

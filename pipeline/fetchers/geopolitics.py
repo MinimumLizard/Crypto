@@ -34,16 +34,29 @@ KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 # §6.11's default themes. The query is what GDELT actually matches on, so it is
 # kept next to the label rather than derived from it: "OPEC" as a bare word also
 # matches "OPEC-like" in unrelated coverage, and quoting changes the result.
+#
+# Two of GDELT's query rules are not optional and it enforces both with a
+# plain-text 200 rather than an error status, so a malformed query looks like a
+# transport failure until the body is read:
+#
+#   * a QUOTED phrase must be at least five characters. '"Iran"', '"OPEC"',
+#     '"SEC"' and '"CFTC"' are all rejected as "the specified phrase is too
+#     short". Unquoted, the same words are fine.
+#   * OR'd terms must be wrapped in parentheses, or it answers "queries
+#     containing OR'd terms must be surrounded by ()".
+#
+# Five of these ten queries broke one of those rules and returned nothing for
+# days. Each form below was run against the live API before being committed.
 THEMES: list[tuple[str, str]] = [
     ("Strait of Hormuz", '"Strait of Hormuz"'),
-    ("Iran", '"Iran" (sanctions OR military OR nuclear OR oil)'),
-    ("Red Sea / Bab al-Mandab", '"Red Sea" OR "Bab al-Mandab"'),
-    ("OPEC", '"OPEC"'),
+    ("Iran", 'iran (sanctions OR nuclear OR oil)'),
+    ("Red Sea / Bab al-Mandab", '("Red Sea" OR "Bab al-Mandab")'),
+    ("OPEC", 'opec (production OR output OR quota)'),
     ("Sanctions", '"sanctions"'),
     ("Tariffs", '"tariffs"'),
     ("Taiwan", '"Taiwan" (China OR military OR strait)'),
-    ("US midterms", '"midterm elections" OR "midterms"'),
-    ("SEC / CFTC crypto", '("SEC" OR "CFTC") (crypto OR cryptocurrency OR bitcoin)'),
+    ("US midterms", '("midterm elections" OR "midterm election")'),
+    ("SEC / CFTC crypto", 'crypto (regulation OR lawsuit OR enforcement)'),
     ("Stablecoin legislation", '"stablecoin" (bill OR legislation OR Congress OR law)'),
 ]
 
@@ -90,11 +103,34 @@ GDELT_RETRIES = 3
 
 
 def _gdelt_timeline(query: str, mode: str) -> list[dict]:
-    """One GDELT timeline. Raises so the caller writes a single health row."""
-    payload = http.get_json(
+    """One GDELT timeline. Raises so the caller writes a single health row.
+
+    GDELT does not always signal a refusal with a status code: it will answer
+    200 and a plain-text rate-limit notice. Passing that to a JSON decoder
+    produced the health row "Expecting value: line 1 column 1", which tells a
+    reader nothing about what actually happened. The body is checked first so
+    the row names the real cause.
+    """
+    response = http.request(
         GDELT,
         params={"query": query, "mode": mode, "format": "json", "timespan": "6m"},
         cache_hours=6, retries=GDELT_RETRIES, timeout=60)
+
+    body = response.text.lstrip()
+    if not body.startswith("{"):
+        # GDELT reports rate limits AND query syntax errors the same way, so the
+        # body is the only thing that distinguishes "come back later" from "this
+        # query is malformed and always will be". Both go in the health row
+        # verbatim; an opaque decoder error hid four broken queries for a while.
+        note = " ".join(body.split())[:140]
+        raise http.FetchError(
+            f"GDELT answered {response.status_code} with a non-JSON body: {note}")
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise http.FetchError(f"GDELT returned undecodable JSON: {exc}") from exc
+
     timeline = payload.get("timeline") or []
     if not timeline:
         return []
