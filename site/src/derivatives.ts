@@ -121,7 +121,7 @@ function basisPanel(basis: Record<string, any[]>): string {
       <div class="tablewrap"><table><thead><tr>
         <th>Expiry</th><th class="num">Days</th><th class="num">Basis</th>
         <th class="num">Annualised</th></tr></thead>
-      <tbody>${rows.slice(0, 8).map((b) => `<tr>
+      <tbody>${rows.map((b) => `<tr>
         <td>${escapeHtml(b.expiry)}</td>
         <td class="num">${b.days}</td>
         <td class="num ${dirClass(b.basis_pct)}">${b.basis_pct.toFixed(2)}%</td>
@@ -131,7 +131,9 @@ function basisPanel(basis: Record<string, any[]>): string {
   return `<div class="grid2">${blocks}</div>
     <p class="howto">Basis is the dated future against spot, annualised over the
     days remaining. A positive curve is the cost of carrying a long position
-    through the future rather than the spot market.</p>`;
+    through the future rather than the spot market. Every listed expiry is
+    shown: the far end is where a carry trade is priced, so a curve cut off at
+    the front months is not a curve.</p>`;
 }
 
 function optionsPanel(options: Record<string, any>): string {
@@ -144,7 +146,7 @@ function optionsPanel(options: Record<string, any>): string {
       <div class="tablewrap"><table><thead><tr>
         <th>Expiry</th><th class="num">Days</th><th class="num">IV</th>
         <th class="num">Open interest</th></tr></thead>
-      <tbody>${o.term_structure.slice(0, 8).map((t: any) => `<tr>
+      <tbody>${o.term_structure.map((t: any) => `<tr>
         <td>${escapeHtml(t.expiry)}</td><td class="num">${t.days}</td>
         <td class="num">${t.iv.toFixed(1)}</td>
         <td class="num">${compact(t.open_interest)}</td></tr>`).join('')}
@@ -153,7 +155,8 @@ function optionsPanel(options: Record<string, any>): string {
   const note = (Object.values(options)[0] as any)?.skew_note ?? '';
   return `<div class="grid2">${blocks}</div>
     <p class="howto">IV is the median across strikes at each expiry — a mean is
-    dragged by deep wings whose quotes are wide and barely traded.</p>
+    dragged by deep wings whose quotes are wide and barely traded. Every listed
+    expiry is shown, because the shape from front to back IS the term structure.</p>
     ${note ? `<p class="howto caveat">${escapeHtml(note)}</p>` : ''}`;
 }
 
