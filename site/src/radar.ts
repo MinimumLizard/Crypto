@@ -164,22 +164,37 @@ function governancePanel(governance: any): string {
     <p class="howto caveat">${escapeHtml(governance.how_to_read)}</p>`;
 }
 
-function securityPanel(security: any): string {
-  if (!security?.available) return panelError(security?.reason ?? 'no incident feed');
-  const relevant = security.touching_book?.length
-    ? `<p class="howto caveat"><strong>${security.touching_book.length} incident(s)
-       name a tracked project.</strong></p>`
-    : '<p class="howto caveat">No incident in the feed names a tracked project.</p>';
-  const rows = security.rows.slice(0, 20).map((row: any) => `<tr>
+function incidentRows(rows: any[]): string {
+  return rows.map((row: any) => `<tr>
     <td class="num dim">${escapeHtml(row.date)}</td>
     <td>${row.link ? `<a href="${escapeHtml(row.link)}" rel="noopener noreferrer" target="_blank">${escapeHtml(row.name)}</a>` : escapeHtml(row.name)}</td>
     <td class="num">$${compact(row.amount_usd)}</td>
     <td class="dim">${escapeHtml(row.technique ?? '')}</td>
     <td>${row.assets ? `<span class="badge"><i></i>${escapeHtml(row.assets)}</span>` : ''}</td>
   </tr>`).join('');
-  return `${relevant}<div class="tablewrap"><table><thead><tr>
+}
+
+function securityPanel(security: any): string {
+  if (!security?.available) return panelError(security?.reason ?? 'no incident feed');
+
+  const table = (rows: string) => `<div class="tablewrap"><table><thead><tr>
     <th>Date</th><th>Incident</th><th class="num">Lost</th><th>Technique</th>
-    <th>Tagged</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <th>Tagged</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  // Incidents naming a held protocol come FIRST. Sorting the whole feed by date
+  // put every one of them below twenty newer incidents that have nothing to do
+  // with the book, so the panel announced four relevant incidents and then
+  // showed none of them.
+  const touching = security.touching_book ?? [];
+  const relevant = touching.length
+    ? `<p class="howto caveat"><strong>${touching.length} incident(s) name a
+        tracked project</strong> — listed first, ahead of the general feed.</p>
+       ${table(incidentRows(touching))}
+       <h3 class="subhead">Everything else, newest first</h3>`
+    : '<p class="howto caveat">No incident in the feed names a tracked project.</p>';
+
+  const others = security.rows.filter((r: any) => !r.assets).slice(0, 20);
+  return `${relevant}${table(incidentRows(others))}
     <p class="howto caveat">${escapeHtml(security.how_to_read)}</p>`;
 }
 
