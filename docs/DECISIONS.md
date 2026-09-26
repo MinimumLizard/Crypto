@@ -402,7 +402,7 @@ cross-venue basis trade is priced off. The table shows the spread as a column.
 
 ---
 
-## 2026-09-27 — D018: two bugs the P4 tests caught before they shipped
+## 2026-09-26 — D018: two bugs the P4 tests caught before they shipped
 
 **Booleans sum as unsigned.** polars returns `u32` from `(col > 0).sum()`, so
 `advances - declines` underflowed the moment more names fell than rose: 0 − 3
@@ -425,7 +425,7 @@ on the RRG crosshair as though it had been measured there.
 
 ---
 
-## 2026-09-27 — D019: what P4 can and cannot show today
+## 2026-09-26 — D019: what P4 can and cannot show today
 
 Three of the four P4 deliverables are complete now. The fourth is complete in
 mechanism and empty in data, and the difference is worth stating rather than

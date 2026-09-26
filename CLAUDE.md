@@ -75,12 +75,14 @@ blocking them.
    `curl -s -o /dev/null -w '%{http_code}' https://minimumlizard.github.io/Crypto/`
    AFTER the last push of the session. Changing the source to GitHub Actions
    retires the legacy builder and ends this permanently.
-5. **The scheduled daily run has not fired yet.** `daily.yml`'s 00:20 UTC cron
-   did not trigger on its first night; the build that deployed was a manual
-   `workflow_dispatch`. GitHub delays the first schedule on a new repository and
-   drops crons under load, so this may simply settle. If the data branch has no
-   `Data update` commit for a given day, the schedule is the thing to check
-   first, not the pipeline.
+5. **The schedule fires, but ~4h40m late.** Resolved as a blocker: `daily.yml`
+   ran on `event: schedule` on 2026-09-25 (run 5) and 2026-09-26 (run 6), so
+   the cron is live and the build no longer depends on a manual dispatch. It
+   does not run at 00:20 UTC though — both started at 05:02–05:05 UTC. GitHub
+   queues cron-triggered runs on public repos behind paid load and does not
+   guarantee the minute. Treat 00:20 as "some time after 00:20", and if the
+   `data` branch has no `Data update` commit by ~06:00 UTC, then check the
+   schedule.
 
 ## Hard rules
 
@@ -139,6 +141,8 @@ Reasoning in PLAN.md §2.
 - **Three book names have no Binance pair** (FLUID, GEOD, AZTEC) so MiniLizard
   parity cannot hold for them. XMR too, on the watchlist.
 - **Actions cron slips at `:00`** — all schedules use off-the-hour minutes.
+  It slips far more than that anyway: the 00:20 UTC daily fired at 05:02 and
+  05:05 on its two scheduled nights. Never assume a cron ran on time.
 - **Scheduled workflows on public repos stop after 60 days idle** — keepalive.
 - **Bars are stored PER VENUE and never merged.** Binance for parity, longest
   series for charts. Splicing would put a seam into an ATR and a pivot detector.
