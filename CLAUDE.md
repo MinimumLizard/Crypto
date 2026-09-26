@@ -184,6 +184,10 @@ Reasoning in PLAN.md §2.
   (a false venue claim, a duplicated note, "1th percentile") were invisible in
   the source and obvious in the render, and a second pass over P4 found six more
   (D020). Always look at the images, at BOTH viewports, zoomed in enough to read.
+- **Derivatives OI and volume are HYPERLIQUID ONLY** (`perp_contexts`), because
+  it is the one venue that serves OI to a US address. OI/market cap ranks
+  leverage on that venue, not the market's (D021). Anything summed across venues
+  would silently omit Binance and Bybit.
 - **A return is not safe to show until its window is on the row.** The sector
   table ranked a 224-day return against a 400-day one in the same sortable
   column. Same lesson as the valuation basis (D016); it will recur.

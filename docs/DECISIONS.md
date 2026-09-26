@@ -505,3 +505,28 @@ noun missing.
 The cost is a wider table, which on a 390px viewport means more horizontal
 scrolling inside the panel. That is the right trade: a table that scrolls is
 recoverable, a comparison that is silently invalid is not.
+
+---
+
+## 2026-09-26 — D021: the open interest table is one venue, and now says so
+
+BTC's row read `$3.16B` open interest with `OI / mkt cap 0.2%`, under a panel
+that called OI/market cap "the leverage gauge". Both numbers are Hyperliquid's
+book alone — `perp_contexts` comes from `metaAndAssetCtxs` and nothing else —
+and BTC's actual perp open interest across venues is more than an order of
+magnitude larger. Nothing on the page said which venue it was.
+
+That is the same defect class as the false "uses binance" venue claim caught by
+screenshot review in P3: not a wrong calculation, a true number under a label
+that invites a reading it cannot support. A reader comparing BTC's 0.2% to
+HYPE's 9.3% would conclude BTC perps are barely levered, when what the column
+actually shows is that Hyperliquid is a small venue for BTC and the dominant one
+for HYPE.
+
+The panel is now titled "Open interest — Hyperliquid only", both dollar columns
+are marked `(HL)`, and a caveat states that the ranking is leverage on this
+venue rather than the market's leverage on a name.
+
+Why not aggregate it instead: the venues that would have to be summed are the
+ones that refuse a US address, and every GitHub runner is one. One venue
+labelled honestly beats an aggregate that silently omits most of the market.

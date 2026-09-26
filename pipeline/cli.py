@@ -382,6 +382,13 @@ def build_derivatives() -> dict:
             "funds hourly, Binance and Bybit every four or eight hours, so the "
             "same raw rate means a different annual cost on each. Using one "
             "constant can invert the sign of the comparison."),
+        "oi_venue_caveat": (
+            "Every figure in this table is HYPERLIQUID'S BOOK ALONE, because it "
+            "is the one venue that serves open interest to a US address without "
+            "a key. It is not the market's open interest in a name: Hyperliquid "
+            "holds a small share of BTC and ETH perp OI and a dominant share of "
+            "HYPE's, so OI/market cap ranks leverage ON THIS VENUE and must not "
+            "be read as how levered the market is on a name."),
         "oi_caveat": (
             "Open interest has no free history, so OI change is computed from "
             "our own snapshots and starts accumulating from the first build. "

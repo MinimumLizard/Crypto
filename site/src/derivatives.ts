@@ -55,7 +55,7 @@ function fundingTable(rows: any[]): string {
     the comparison. Hover any cell for the raw rate and interval.</p>`;
 }
 
-function oiTable(rows: any[], caveat: string): string {
+function oiTable(rows: any[], caveat: string, venueCaveat: string): string {
   if (!rows.length) return panelError('no perp context snapshots yet');
   const snaps = rows[0]?.snapshots_held ?? 0;
   const body = rows.map((r) => `<tr>
@@ -71,13 +71,14 @@ function oiTable(rows: any[], caveat: string): string {
 
   return `<div class="tablewrap"><table id="oi"><thead><tr>
     <th data-sort="str">Asset</th>
-    <th data-sort="num" class="num">Open interest</th>
-    <th data-sort="num" class="num">24h volume</th>
-    <th data-sort="num" class="num" title="Notional riding on the name relative to its size">OI / mkt cap</th>
+    <th data-sort="num" class="num" title="Hyperliquid's book alone">Open interest (HL)</th>
+    <th data-sort="num" class="num" title="Hyperliquid's book alone">24h volume (HL)</th>
+    <th data-sort="num" class="num" title="Hyperliquid notional riding on the name relative to its size; a ranking across names on one venue, not the market's leverage">OI / mkt cap</th>
     <th data-sort="num" class="num">OI / volume</th>
     <th data-sort="num" class="num">OI change</th>
     <th data-sort="num" class="num">Price change</th>
     <th>Reading</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="howto caveat">${escapeHtml(venueCaveat)}</p>
     <p class="howto caveat">${escapeHtml(caveat)} Currently holding
     <strong>${snaps}</strong> snapshot${snaps === 1 ? '' : 's'}.</p>`;
 }
@@ -180,9 +181,11 @@ async function main(): Promise<void> {
 
   root.innerHTML = [
     panel('Funding, annualised per venue', stamp, fundingTable(d.funding), d.how_to_read),
-    panel('Open interest', stamp, oiTable(d.open_interest, d.oi_caveat),
+    panel('Open interest — Hyperliquid only', stamp,
+      oiTable(d.open_interest, d.oi_caveat, d.oi_venue_caveat),
       'OI against market cap is the leverage gauge: how much notional is riding '
-      + 'on a name relative to its size.'),
+      + 'on a name relative to its size. Read it as a ranking across names on '
+      + 'one venue, not as the market\u2019s leverage on any of them.'),
     panel('Volatility — implied against realised', stamp, volPanel(d.volatility, d.implied)),
     panel('Futures basis', stamp, basisPanel(d.basis)),
     panel('Options — term structure and put/call', stamp, optionsPanel(d.options)),
