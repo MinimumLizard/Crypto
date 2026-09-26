@@ -36,6 +36,7 @@ class Asset:
     hl_spot: str | None = None
     llama_parent: str | None = None
     llama_children: list[str] = field(default_factory=list)
+    llama_chain: str | None = None   # DefiLlama chain name; chains are not protocols
     coinmetrics_id: str | None = None
     minilizard_variant: str = "V10"
     extension_threshold_pct: float = 12.0

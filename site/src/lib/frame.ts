@@ -13,7 +13,7 @@ export const ROUTES: { path: string; label: string; built: boolean }[] = [
   { path: '', label: 'Home', built: true },
   { path: 'btc-cycle', label: 'BTC cycle', built: true },
   { path: 'assets', label: 'Assets', built: true },
-  { path: 'valuation', label: 'Valuation', built: false },
+  { path: 'valuation', label: 'Valuation', built: true },
   { path: 'breadth', label: 'Breadth', built: false },
   { path: 'sectors', label: 'Sectors', built: false },
   { path: 'derivatives', label: 'Derivatives', built: false },

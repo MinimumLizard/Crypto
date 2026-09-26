@@ -15,7 +15,7 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P1 done and LIVE at https://minimumlizard.github.io/Crypto/.**
+**P1 and P3 (valuation) done and LIVE at https://minimumlizard.github.io/Crypto/.**
 P2 (macro) is next and needs a FRED key.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
@@ -24,9 +24,13 @@ MiniLizard engine; the quantile model **with its replication gate passing**;
 the site (home, BTC cycle, assets, asset pages, source health) with CI and a
 daily build that deploys to Pages. Decisions D001–D012.
 
-Not started: valuation (P3), breadth/sectors/derivatives (P4), portfolio and
-alerts (P5), geopolitics and radar (P6), validation pages (P7). Those routes
-exist and say what they will contain and what is blocking them.
+P3 shipped the valuation page: the §6.4 screen, net holder yield ranked,
+grades, observed supply events and the reverse-DCF grid, fed by CoinGecko
+caps/supply and DefiLlama fees, revenue, holders' revenue and TVL.
+
+Not started: breadth/sectors/derivatives (P4), portfolio and alerts (P5),
+geopolitics and radar (P6), validation pages (P7). Those routes exist and say
+what they will contain and what is blocking them.
 
 ## Blockers
 
@@ -147,6 +151,16 @@ Reasoning in PLAN.md §2.
   is simply absent from earlier rows. Build the frame as Utf8 and cast after.
 - **`ruff` treats a bare `package.json` gitignore line as matching every level** —
   it silently excluded `site/package.json` and broke `npm ci` in CI.
+- **Circulating supply history = CoinGecko market cap / price** (D014). No
+  free API serves the series; this derives it. Capped at 365 days (400 → 401).
+- **Implied supply needs cleaning before it is measured** (D015). Transient
+  FDV spikes land exactly ON max supply; a point-to-point read across one gave
+  VIRTUAL −138% annualised dilution. But a move that PERSISTS is a real unlock
+  and is the signal — do not filter those out, they are the only unlock data
+  available since DefiLlama's emissions endpoint is paid.
+- **Zero capture is judged on the CURRENT window**, not all history: Aave paid
+  holders at some point in 2,123 days, so an all-history sum graded it A while
+  today's capture is zero.
 - **Screenshot review catches what code review does not.** Three real defects
   (a false venue claim, a duplicated note, "1th percentile") were invisible in
   the source and obvious in the render. Always look at the images.

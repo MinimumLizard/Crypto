@@ -22,8 +22,8 @@ import numpy as np
 import polars as pl
 
 from pipeline import artefacts, health, paths, registry, store
-from pipeline.fetchers import coinmetrics, prices, sentiment
-from pipeline.metrics import cycle, risk
+from pipeline.fetchers import coingecko, coinmetrics, defillama, prices, sentiment
+from pipeline.metrics import cycle, risk, valuation
 from pipeline.signals import quantile as quantile_model
 
 
@@ -72,6 +72,15 @@ def cmd_fetch(args) -> int:
         _log(f"  {got}/{len(result)} assets have bars")
         prices.backfill_btc_from_coinmetrics()
 
+    if only in ("all", "fundamentals"):
+        _log("fundamentals: coingecko caps and supply history")
+        result = coingecko.fetch_all()
+        got = sum(1 for k, v in result.items() if v and k != "markets")
+        _log(f"  markets={result.get('markets')} rows, supply history for {got} assets")
+        _log("fundamentals: defillama fees, revenue, holders revenue, tvl")
+        llama = defillama.fetch_all()
+        _log(f"  {sum(1 for v in llama.values() if v)}/{len(llama)} assets have fee data")
+
     if only in ("all", "sentiment"):
         _log("sentiment: fear & greed, wikipedia page views")
         result = sentiment.fetch_all()
@@ -110,6 +119,9 @@ def cmd_build(args) -> int:
 
     _log("building btc cycle")
     artefacts.write("btc-cycle", build_btc_cycle())
+
+    _log("building valuation")
+    artefacts.write("valuation", build_valuation())
 
     _log("building source health")
     artefacts.write("source-health", artefacts.build_source_health())
@@ -196,6 +208,58 @@ def build_btc_cycle() -> dict:
 
     payload["scorecard"] = build_scorecard()
     return payload
+
+
+def build_valuation() -> dict:
+    """The §6.4 cross-sectional screen."""
+    markets = store.read_snapshot("supply")
+    if not markets.is_empty():
+        # Latest snapshot per asset: the table is append-only and a build may
+        # run several times a day.
+        markets = (markets.sort("observed_at")
+                          .group_by("coingecko_id", maintain_order=True).last())
+
+    rows = []
+    for asset in registry.tracked():
+        item = valuation.compute(asset, markets)
+        payload = item.to_dict()
+        payload["own_history"] = valuation.own_history_percentile(
+            asset.symbol, asset.coingecko_id,
+            asset.llama_parent or asset.llama_chain)
+        rows.append(payload)
+
+    computed = [valuation.compute(a, markets) for a in registry.tracked()]
+    medians = valuation.sector_medians(computed, [
+        "p_fees", "p_revenue", "p_holders_revenue", "holder_yield",
+        "net_holder_yield", "mc_tvl", "fdv_mc"])
+
+    grades: dict[str, int] = {}
+    for row in rows:
+        grades[row["grade"]] = grades.get(row["grade"], 0) + 1
+
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "basis": valuation.DEFAULT_BASIS,
+        "bases": list(valuation.BASES),
+        "rows": rows,
+        "sector_medians": medians,
+        "grade_counts": grades,
+        "grade_notes": valuation.GRADE_NOTES,
+        "how_to_read": (
+            "Tokens are not equities, but several equity concepts map across. "
+            "Every multiple is annualised on the basis named at the top — the "
+            "same P/E on 30 days and on a trailing year are different numbers, "
+            "often by more than the gap between two assets. The headline is NET "
+            "HOLDER YIELD: what reaches holders, minus the rate supply is "
+            "growing. Positive means the token is bought back faster than it is "
+            "diluted."),
+        "caveat": (
+            "Circulating supply history is implied from CoinGecko's market cap "
+            "divided by price, because no free API serves the series directly. "
+            "CoinGecko restates historical market caps, so the implied supply "
+            "inherits that; it is not an on-chain read. Treasury, and therefore "
+            "the EV-analogue and runway, are behind DefiLlama's paid tier."),
+    }
 
 
 def build_scorecard() -> dict:
@@ -365,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
 
     fetch = sub.add_parser("fetch", help="pull sources into the store")
     fetch.add_argument("--only", default="all",
-                       choices=["all", "prices", "onchain", "sentiment", "hourly"])
+                       choices=["all", "prices", "onchain", "fundamentals", "sentiment", "hourly"])
     fetch.add_argument("--symbols", default="")
     fetch.set_defaults(func=cmd_fetch)
 

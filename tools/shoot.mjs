@@ -17,7 +17,7 @@ const ROUTES = [
   ['asset-HYPE', '/pages/asset.html?s=HYPE'],
   ['asset-SOL', '/pages/asset.html?s=SOL'],
   ['source-health', '/pages/source-health.html'],
-  ['valuation-stub', '/pages/valuation.html'],
+  ['valuation', '/pages/valuation.html'],
   ['macro-stub', '/pages/macro.html'],
 ];
 const SIZES = [['desktop', 1440, 1200], ['mobile', 390, 900]];

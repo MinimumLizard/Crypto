@@ -295,3 +295,85 @@ Three defects were invisible in the source and obvious in the render: the asset
 page claiming a score "uses binance" for a name with zero Binance bars, the
 parity note rendered twice under different headings, and "1th percentile". The
 brief's insistence on inspecting the images is doing real work.
+
+---
+
+## 2026-09-26 — D014: circulating supply history is derived, not waited for
+
+§6.4's headline metric is **net holder yield = holder yield − net dilution**,
+and dilution needs circulating supply as it was in the past. No free API serves
+that series, which is why §3 tells the pipeline to snapshot supply daily — an
+answer that only becomes useful a year from now.
+
+The series already exists implicitly. CoinGecko's `/coins/{id}/market_chart`
+returns `prices` and `market_caps` on matched timestamps, so
+
+    circulating supply = market cap / price
+
+A year of dilution history is therefore available today. Verified on UNI:
++3.24% over 365 days, which is consistent with its ongoing unlocks.
+
+**Cost, and it is not small.** CoinGecko's historical market cap is itself a
+derived series that gets restated, so implied supply inherits that; it is not
+an on-chain read, and the page says so. The public API also caps history at
+365 days — 400 returns 401 — so the 365-day window is measured across roughly
+358 days of medians and understates by about 2%.
+
+Daily snapshotting continues regardless. In a year our own series will reach
+further back than CoinGecko will serve, and it cannot be restated under us.
+
+---
+
+## 2026-09-26 — D015: cleaning the implied supply series, and what NOT to clean
+
+Raw implied supply has two kinds of large one-day move, and they are opposites.
+
+**Artefacts, which are removed.** For a day or two CoinGecko reports the FULLY
+DILUTED cap, so implied supply jumps to max supply and returns. VIRTUAL hits
+exactly 1,000,000,000 on 2026-02-10 and comes back the next day. Measured
+point-to-point across one of these, VIRTUAL's dilution read **−138% annualised**
+— a rate supply cannot produce.
+
+Two filters, in order of how defensible they are: circulating cannot exceed
+total supply; and anything more than 5% from a centred rolling median is an
+artefact, since the fastest diluter in the book adds 0.13% a day. The 5% is
+needed because the spikes land *exactly on* max supply rather than above it —
+AAVE's 16,000,000 is only 5.3% above its neighbours, survived a 10% test, and
+put +14.7% annualised dilution on a token whose supply grew 1.2% that year.
+
+**Supply events, which are the signal.** A move that persists is a real unlock:
+MORPHO +50% on 2025-10-10, ONDO +54% on 2026-01-18, and HYPE's supply falling
+270m → 222m over a year as the Assistance Fund buys back. An earlier version of
+this code marked these "low confidence" and flagged 19 of 26 names, burying the
+most important fact about a token as though it were noise. They are now
+reported as observed supply events — and they are the **only unlock data
+available at all**, since DefiLlama's emissions endpoint is 402 (D007).
+
+Also: a round trip has two legs, and judging a move against the value it
+started from only catches the outbound one. On the way back the "before" value
+IS the spike, so one artefact was reported as two events. Reversion is now
+judged on the levels either side of the excursion.
+
+---
+
+## 2026-09-26 — D016: grade D, and why an annualised rate needs a headroom
+
+Two presentation decisions that changed what the numbers mean.
+
+**Grade D — "measured, capture is zero".** The brief's scale runs A to F, but
+AAVE, CFG, FLUID, MORPHO, ONDO and VIRTUAL have years of fee and revenue
+history and holders' revenue of exactly zero. Grading that F would call a name
+with 2,123 days of data unmeasurable. They keep a net holder yield, and it is
+negative, because dilution is real. Zero capture is judged on the CURRENT
+window, not on all history — Aave distributed to holders at some point, so an
+all-history sum is non-zero and graded it A while today's capture is flatly zero.
+
+**Dilution headroom.** AAVE genuinely issued 3.6% of supply in 90 days, which
+annualises to +14.7%. Only 570k tokens remain below its 16m cap, so that rate
+has about a quarter of a year left in it. The rate alone reads as a trend; with
+the headroom beside it, it reads as the terminal event it is.
+
+Verified independently: HYPE 2.82%, PUMP 12.27% and UNI 1.92% holder yields
+recomputed by hand from the stored series match the page exactly. HYPE reads
+3.46% on a 30-day basis against 2.82% on 90-day, which is why §6.4 insists the
+annualisation basis is labelled on every figure.

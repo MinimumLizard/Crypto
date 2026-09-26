@@ -57,6 +57,7 @@ benchmarks:
     coinbase: BTC-USD
     hl_perp: BTC
     hl_spot: null
+    llama_chain: Bitcoin    # chain-level fees endpoint, not a protocol slug
     sector: Hard money
     minilizard_variant: V8          # §7.1: V8 on BTC/ETH
     extension_threshold_pct: 5      # §7.1: 5% for BTC/ETH, 12% elsewhere
@@ -74,6 +75,7 @@ benchmarks:
     coinbase: ETH-USD
     hl_perp: ETH
     hl_spot: null
+    llama_chain: Ethereum    # chain-level fees endpoint, not a protocol slug
     sector: Layer 1
     llama_parent: null              # chain-level fees, not a protocol slug
     minilizard_variant: V8
@@ -116,6 +118,7 @@ book:
     name: Solana
     coingecko_id: solana
     tier: 1
+    llama_chain: Solana    # chain-level fees endpoint, not a protocol slug
     sector: Layer 1
     chains: {solana: native}
     binance_spot: SOLUSDT
@@ -176,6 +179,7 @@ book:
     name: Zcash
     coingecko_id: zcash
     tier: 1
+    llama_chain: Zcash    # chain-level fees endpoint, not a protocol slug
     sector: Privacy
     chains: {zcash: native}
     binance_spot: ZECUSDT
@@ -564,12 +568,14 @@ watchlist:
       - "Holders' revenue rises above $0"
   - symbol: TRX
     coingecko_id: tron
+    llama_chain: Tron
     binance_spot: TRXUSDT
     coinbase: null
     hl_perp: TRX
     role: "Honest counterexample — kept deliberately."
   - symbol: XMR
     coingecko_id: monero
+    llama_chain: Monero
     binance_spot: null              # delisted from Binance
     coinbase: null
     hl_perp: XMR
