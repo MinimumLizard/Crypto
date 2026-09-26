@@ -182,7 +182,14 @@ Reasoning in PLAN.md §2.
   tail shoot across the plot.
 - **Screenshot review catches what code review does not.** Three real defects
   (a false venue claim, a duplicated note, "1th percentile") were invisible in
-  the source and obvious in the render. Always look at the images.
+  the source and obvious in the render, and a second pass over P4 found six more
+  (D020). Always look at the images, at BOTH viewports, zoomed in enough to read.
+- **A return is not safe to show until its window is on the row.** The sector
+  table ranked a 224-day return against a 400-day one in the same sortable
+  column. Same lesson as the valuation basis (D016); it will recur.
+- **`series[::2]` drops the last point when the length is even**, which put every
+  400-day sector chart a day behind the return printed beside it. Thin with
+  `sectors._thin`, which keeps the newest point.
 
 ## Commands
 

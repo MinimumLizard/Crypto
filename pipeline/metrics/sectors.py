@@ -106,22 +106,48 @@ def sector_indices(days: int = 400) -> dict:
             cap_weighted = equal
 
         dates = joined["date"].to_list()
+        # The window is not the same for every sector, because each index starts
+        # when its last constituent got a price -- unless that is further back
+        # than the cap, in which case the cap is the start and saying "shared
+        # history" would misdescribe it. Both the length and which of the two
+        # reasons applies are emitted, because a return is meaningless without
+        # the window it was measured over and the page ranks these side by side.
+        span_days = (dates[-1] - dates[0]).days + 1
+        capped = joined.height >= days
         out[sector] = {
             "available": True,
             "members": symbols,
             "included": present,
             "excluded": [s for s in symbols if s not in present],
             "start": str(dates[0]),
-            "equal_weight": [{"d": str(d), "v": round(float(v), 2)}
-                             for d, v in zip(dates, equal, strict=False)][::2],
-            "cap_weight": [{"d": str(d), "v": round(float(v), 2)}
-                           for d, v in zip(dates, cap_weighted, strict=False)][::2],
+            "days": span_days,
+            "start_capped": capped,
+            "start_reason": (
+                f"the {days}-day cap on how far back an index is drawn"
+                if capped else
+                "the first date every included member had a price"),
+            "equal_weight": _thin(dates, equal),
+            "cap_weight": _thin(dates, cap_weighted),
             "equal_return_pct": round(float(equal[-1] - 100), 1),
             "cap_return_pct": round(float(cap_weighted[-1] - 100), 1),
             "return_30d_pct": _window_return(equal, 30),
             "return_90d_pct": _window_return(equal, 90),
         }
     return out
+
+
+def _thin(dates: list, values: np.ndarray) -> list[dict]:
+    """Every other day, but never without the newest point.
+
+    Plain slicing drops the last element on an even-length series, which put the
+    chart's final point a day behind the return printed beside it.
+    """
+    points = [{"d": str(d), "v": round(float(v), 2)}
+              for d, v in zip(dates, values, strict=False)]
+    thinned = points[::2]
+    if points and thinned[-1] is not points[-1]:
+        thinned.append(points[-1])
+    return thinned
 
 
 def _window_return(series: np.ndarray, days: int) -> float | None:

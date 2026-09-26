@@ -463,3 +463,45 @@ implying a wider one.
 **Forward unlocks remain hand-maintained** in `config/unlocks.yaml`, empty on
 purpose (D007). Backward-looking unlocks do not need entering: the valuation
 pipeline already detects them from circulating supply (D015).
+
+---
+
+## 2026-09-26 — D020: the sector table was ranking incomparable windows
+
+Reviewing the P4 renders at both viewports found four defects that the code read
+past. All four were in how the sector index table describes itself, and the
+pattern is the same one D016 recorded for valuation: a number is not safe to
+show until the basis it was measured on is on the row beside it.
+
+**The since-start columns were ranked against different windows.** Privacy read
++258.9% and Layer 1 −38.8% in adjacent rows of one sortable column, and a reader
+compares them. Privacy's index is 224 days long and Layer 1's is 400. Nothing on
+the row said so; the 30d and 90d columns, which *are* comparable, sat to the
+right of the ones the eye lands on first. The window is now a column, the two
+since-start headers say "since start", and a caveat names 30d/90d as the pair to
+rank on.
+
+**The stated reason for the start date was wrong for six of eleven sectors.**
+The footnote said an index starts when every member first had a price. For any
+sector with more than 400 days of common history that is not the operative
+reason — the 400-day cap is. Those rows now carry a `cap` marker and the
+pipeline emits `start_reason` rather than the site inferring one.
+
+**The window could not be derived on the client.** The first version of the
+column used the plotted series' length, which is thinned to every other day, so
+every window would have been reported at half its true length — a fabricated
+number of exactly the kind the hard rules forbid. `days` now comes from the
+pipeline, measured on the dates.
+
+**`[::2]` dropped the newest point on an even-length series**, so the last point
+of every 400-day chart sat one day behind the return printed next to it. `_thin`
+keeps the final point and a parametrised test pins it at odd and even lengths.
+
+Two smaller ones from the same pass: divergence is a difference of two returns
+and so is measured in percentage POINTS, not percent — "+282.8%" read as a
+return; and the breadth page's snapshot caveat said "currently holds 1" with the
+noun missing.
+
+The cost is a wider table, which on a 390px viewport means more horizontal
+scrolling inside the panel. That is the right trade: a table that scrolls is
+recoverable, a comparison that is silently invalid is not.

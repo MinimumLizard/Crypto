@@ -40,8 +40,8 @@ function dominancePanel(d: any): string {
   that says whether money has left Bitcoin for higher-risk assets.</p>
   <p class="howto caveat">Total cap and dominance have no free history, so this
   series is built from our own snapshots and currently holds
-  <strong>${d.snapshots_held}</strong>. A level is shown; a trend is not, because
-  there is not one yet.</p>`;
+  <strong>${d.snapshots_held}</strong> ${d.snapshots_held === 1 ? 'day' : 'days'}.
+  A level is shown; a trend is not, because there is not one yet.</p>`;
 }
 
 function stablecoinPanel(s: any, chains: any[]): string {
