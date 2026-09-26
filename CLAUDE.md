@@ -15,8 +15,8 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P1 and P3 (valuation) done and LIVE at https://minimumlizard.github.io/Crypto/.**
-P2 (macro) is next and needs a FRED key.
+**P1, P3 (valuation) and P4 (derivatives, breadth, sectors) done and LIVE at
+https://minimumlizard.github.io/Crypto/.** P2 (macro) is next and needs a FRED key.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
@@ -28,9 +28,14 @@ P3 shipped the valuation page: the §6.4 screen, net holder yield ranked,
 grades, observed supply events and the reverse-DCF grid, fed by CoinGecko
 caps/supply and DefiLlama fees, revenue, holders' revenue and TVL.
 
-Not started: breadth/sectors/derivatives (P4), portfolio and alerts (P5),
-geopolitics and radar (P6), validation pages (P7). Those routes exist and say
-what they will contain and what is blocking them.
+P4 shipped three pages: derivatives (funding per venue, OI, vol, basis,
+options), breadth (dominance, stablecoins, participation, correlations) and
+sectors (equal/cap-weight indices, fee growth, RRG). See D019 for exactly which
+parts are real today and which accumulate forward.
+
+Not started: portfolio and alerts (P5), geopolitics and radar (P6), validation
+pages (P7). Those routes exist and say what they will contain and what is
+blocking them.
 
 ## Blockers
 
@@ -161,6 +166,16 @@ Reasoning in PLAN.md §2.
 - **Zero capture is judged on the CURRENT window**, not all history: Aave paid
   holders at some point in 2,123 days, so an all-history sum graded it A while
   today's capture is zero.
+- **Funding must be annualised per venue** (D017). HL funds hourly, Binance and
+  Bybit every 4-8h. The same raw rate is 87.6%/yr vs 10.95%/yr, and on
+  2026-09-26 a constant multiplier would have flipped BTC's sign between
+  venues. Use `predictedFundings`' own `fundingIntervalHours`.
+- **polars sums booleans as u32.** `(col > 0).sum() - (col < 0).sum()`
+  underflows to ~4.29e9 whenever the second exceeds the first. Cast to Int64
+  first. This broke the advance-decline line on exactly the days it matters.
+- **Never zero-fill NaN before a rolling z-score** (D018). It drags the mean
+  and inflates the sd for the length of the window; on the RRG it made every
+  tail shoot across the plot.
 - **Screenshot review catches what code review does not.** Three real defects
   (a false venue claim, a duplicated note, "1th percentile") were invisible in
   the source and obvious in the render. Always look at the images.

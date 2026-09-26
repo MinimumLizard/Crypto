@@ -377,3 +377,89 @@ Verified independently: HYPE 2.82%, PUMP 12.27% and UNI 1.92% holder yields
 recomputed by hand from the stored series match the page exactly. HYPE reads
 3.46% on a 30-day basis against 2.82% on 90-day, which is why §6.4 insists the
 annualisation basis is labelled on every figure.
+
+---
+
+## 2026-09-26 — D017: funding is annualised per venue, and that changes signs
+
+§6.9 asks for funding across Hyperliquid, Binance and Bybit. The trap is that
+they do not fund on the same schedule: Hyperliquid funds hourly, Binance and
+Bybit every four or eight hours. A rate of 0.0001 is **87.6%/yr** hourly and
+**10.95%/yr** on an eight-hour venue.
+
+Measured on 2026-09-26, BTC funding was +1.25e-05 hourly on Hyperliquid and
+−7.75e-06 on Binance. Annualised correctly those are **+10.95% and −0.85%** —
+opposite signs. A single multiplier would not merely have been imprecise, it
+would have reported the two venues as agreeing when they disagreed.
+
+Every rate carries its venue's own `fundingIntervalHours` from
+`predictedFundings`, which is also the call that answers the geoblock: Binance
+and Bybit refuse US addresses, and every GitHub runner is one.
+
+The dispersion this exposes is itself the signal. SYRUP reads +82.0% annualised
+on Hyperliquid against +2.9% on Binance — a 79-point spread, which is what a
+cross-venue basis trade is priced off. The table shows the spread as a column.
+
+---
+
+## 2026-09-27 — D018: two bugs the P4 tests caught before they shipped
+
+**Booleans sum as unsigned.** polars returns `u32` from `(col > 0).sum()`, so
+`advances - declines` underflowed the moment more names fell than rose: 0 − 3
+became 4,294,967,294. That is most down days, which is precisely when an
+advance-decline line is worth reading. Caught by a test asserting the
+cumulative series over two constructed days; both counts are now cast to
+`Int64` before subtracting.
+
+**Zero-filling NaN corrupted the RRG.** RS-Momentum is the z-score of
+RS-Ratio's four-week change, and the first four positions have no change to
+measure. Filling them with `0.0` put a value far outside the range of real
+week-on-week moves into the rolling window, dragging the mean and inflating the
+standard deviation for the first fourteen weeks. On the chart the tails shot
+across the whole plot and the rotation was invisible underneath the artefact.
+`_zscore_tail` is now NaN-aware and refuses a window that is not full.
+
+A flat series now returns NaN rather than 0 as well: a constant has no
+dispersion, so its z-score is undefined, and returning 0 would place it exactly
+on the RRG crosshair as though it had been measured there.
+
+---
+
+## 2026-09-27 — D019: what P4 can and cannot show today
+
+Three of the four P4 deliverables are complete now. The fourth is complete in
+mechanism and empty in data, and the difference is worth stating rather than
+hiding behind a chart.
+
+**Real today:** funding across three venues with z-scores against each coin's
+own hourly history; open interest, OI/market cap and OI/volume; realised vol
+and ATR percentile per name; Deribit DVOL against realised; the futures basis
+curve; the options term structure and put/call ratio; stablecoin supply with
+3,224 days of history and a per-chain split; breadth and correlations over the
+tracked universe; sector indices equal- and cap-weighted; the RRG.
+
+**Accumulating from the first build**, because no free source serves the
+history and §3 says to start storing it:
+
+- **Open interest change and the OI-vs-price quadrant.** `metaAndAssetCtxs`
+  gives the current level only. The quadrant reads "needs history" rather than
+  being computed from a single observation.
+- **Total market cap and dominance over time.** CoinGecko's `/global` has no
+  free history. A level is shown; a trend is not, because there is not one.
+- **The advance-decline line.** §6.7 requires it be built forward. A basket
+  chosen from today's top 100 is a basket that survived, so a line drawn back
+  through it rises in periods the real market fell. It is not back-filled at
+  all and the panel says how many days it holds.
+
+**Deliberately not built:** 25-delta skew. Deribit's summary carries mark IV
+but no greeks, and inferring delta without the forward and rate would be a
+worse number wearing a precise-sounding name. §6.9 marks it optional.
+
+**Breadth is measured over the tracked universe, not the top 100.** "% of the
+top 100 above their 200-day average" needs 200 days of prices for 100 coins,
+which the free tier does not serve. The panel names its universe rather than
+implying a wider one.
+
+**Forward unlocks remain hand-maintained** in `config/unlocks.yaml`, empty on
+purpose (D007). Backward-looking unlocks do not need entering: the valuation
+pipeline already detects them from circulating supply (D015).

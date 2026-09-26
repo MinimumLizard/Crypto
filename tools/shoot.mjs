@@ -18,6 +18,9 @@ const ROUTES = [
   ['asset-SOL', '/pages/asset.html?s=SOL'],
   ['source-health', '/pages/source-health.html'],
   ['valuation', '/pages/valuation.html'],
+  ['derivatives', '/pages/derivatives.html'],
+  ['breadth', '/pages/breadth.html'],
+  ['sectors', '/pages/sectors.html'],
   ['macro-stub', '/pages/macro.html'],
 ];
 const SIZES = [['desktop', 1440, 1200], ['mobile', 390, 900]];

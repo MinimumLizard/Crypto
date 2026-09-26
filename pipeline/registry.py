@@ -131,6 +131,41 @@ def unplaced_in_buy_order() -> list[str]:
 
 
 @lru_cache(maxsize=1)
+def unlocks() -> dict[str, Any]:
+    """The hand-maintained forward unlock schedule (D007).
+
+    Returns the parsed file plus how old it is, because an unlock schedule that
+    has not been reviewed in months is a different object from a current one
+    and the page has to be able to say so.
+    """
+    import datetime as dt
+    path = paths.CONFIG / "unlocks.yaml"
+    if not path.exists():
+        return {"available": False, "reason": "config/unlocks.yaml is absent",
+                "unlocks": {}, "age_days": None}
+    raw = yaml.safe_load(path.read_text()) or {}
+    reviewed = (raw.get("meta") or {}).get("last_reviewed")
+    age = None
+    if reviewed:
+        try:
+            age = (dt.date.today() - dt.date.fromisoformat(str(reviewed))).days
+        except ValueError:
+            age = None
+    entries = raw.get("unlocks") or {}
+    return {
+        "available": bool(entries),
+        "unlocks": entries,
+        "last_reviewed": str(reviewed) if reviewed else None,
+        "age_days": age,
+        "reason": (None if entries else
+                   "no unlocks entered yet. DefiLlama's emissions endpoint is "
+                   "402 on the free tier, so the forward schedule is "
+                   "hand-maintained in config/unlocks.yaml and nothing is "
+                   "invented here."),
+    }
+
+
+@lru_cache(maxsize=1)
 def weights() -> dict[str, Any] | None:
     """Target weights, or None when the private file is absent (D009)."""
     path = paths.CONFIG / "weights.yaml"

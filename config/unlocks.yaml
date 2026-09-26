@@ -1,0 +1,37 @@
+# Token unlock schedule — hand-maintained (docs/DECISIONS.md D007)
+#
+# DefiLlama's emissions endpoints are behind its paid tier: `/emissions` and
+# `/emission/{slug}` both return HTTP 402. So the FORWARD-LOOKING schedule has
+# no free source and lives here, maintained from Tokenomist and project docs.
+#
+# The pipeline snapshots this file daily, so "what the schedule was believed to
+# be on date X" becomes a real history even though the source is manual. The
+# site shows the age of this file beside anything derived from it, so a stale
+# schedule looks stale rather than authoritative.
+#
+# BACKWARD-LOOKING unlocks do NOT need to be entered. The valuation pipeline
+# already detects discrete supply events from circulating supply (D015) and the
+# supply panel shows them: MORPHO +50% on 2025-10-10, ONDO +54% on 2026-01-18.
+# Those are observed. This file is only for what has not happened yet.
+#
+# Schema:
+#   SYMBOL:
+#     - date: 2026-11-15          # ISO date of the unlock
+#       tokens: 12500000          # number of tokens released
+#       pct_of_circulating: 2.1   # optional; computed if omitted
+#       note: "Series A cliff"    # what it is
+#       source: "tokenomist"      # where it came from, so it can be rechecked
+#
+# EMPTY ON PURPOSE. Nothing is invented here: an unlock schedule guessed from
+# vesting rules would drive the §6.13 catalyst radar and the "days of volume to
+# absorb" figure, and a wrong date there is worse than no date. Add rows as you
+# verify them.
+
+meta:
+  maintained_by: owner
+  last_reviewed: 2026-09-26
+  source_note: >-
+    DefiLlama emissions is 402 on the free tier. Enter from Tokenomist or the
+    project's own vesting docs, and record which in each row's `source`.
+
+unlocks: {}

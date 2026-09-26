@@ -22,8 +22,16 @@ import numpy as np
 import polars as pl
 
 from pipeline import artefacts, health, paths, registry, store
-from pipeline.fetchers import coingecko, coinmetrics, defillama, prices, sentiment
-from pipeline.metrics import cycle, risk, valuation
+from pipeline.fetchers import (
+    coingecko,
+    coinmetrics,
+    defillama,
+    derivatives,
+    market,
+    prices,
+    sentiment,
+)
+from pipeline.metrics import breadth, cycle, derivs, risk, sectors, valuation
 from pipeline.signals import quantile as quantile_model
 
 
@@ -81,6 +89,16 @@ def cmd_fetch(args) -> int:
         llama = defillama.fetch_all()
         _log(f"  {sum(1 for v in llama.values() if v)}/{len(llama)} assets have fee data")
 
+    if only in ("all", "derivatives"):
+        _log("derivatives: hyperliquid contexts, funding, depth; deribit vol")
+        result = derivatives.fetch_all()
+        _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
+
+    if only in ("all", "market"):
+        _log("market: global cap, top 100, stablecoin supply and chains")
+        result = market.fetch_all()
+        _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
+
     if only in ("all", "sentiment"):
         _log("sentiment: fear & greed, wikipedia page views")
         result = sentiment.fetch_all()
@@ -122,6 +140,15 @@ def cmd_build(args) -> int:
 
     _log("building valuation")
     artefacts.write("valuation", build_valuation())
+
+    _log("building derivatives")
+    artefacts.write("derivatives", build_derivatives())
+
+    _log("building breadth")
+    artefacts.write("breadth", build_breadth())
+
+    _log("building sectors")
+    artefacts.write("sectors", build_sectors())
 
     _log("building source health")
     artefacts.write("source-health", artefacts.build_source_health())
@@ -259,6 +286,151 @@ def build_valuation() -> dict:
             "CoinGecko restates historical market caps, so the implied supply "
             "inherits that; it is not an on-chain read. Treasury, and therefore "
             "the EV-analogue and runway, are behind DefiLlama's paid tier."),
+    }
+
+
+def _latest_caps_by_coin() -> dict[str, float]:
+    """Market cap keyed by the HL perp name, for OI/market-cap."""
+    snapshot = store.read_snapshot("supply")
+    if snapshot.is_empty():
+        return {}
+    latest = (snapshot.sort("observed_at")
+              .group_by("coingecko_id", maintain_order=True).last())
+    by_id = dict(zip(latest["coingecko_id"].to_list(),
+                     latest["market_cap"].to_list(), strict=False))
+    out: dict[str, float] = {}
+    for asset in registry.tracked():
+        if asset.hl_perp and asset.coingecko_id:
+            cap = by_id.get(asset.coingecko_id)
+            if cap:
+                out[asset.hl_perp] = float(cap)
+    return out
+
+
+def build_derivatives() -> dict:
+    """Funding, open interest, volatility and basis (§6.9)."""
+    venues = store.read_snapshot("funding_by_venue")
+    contexts = store.read_snapshot("perp_contexts")
+    caps = _latest_caps_by_coin()
+
+    tracked = {a.hl_perp: a.symbol for a in registry.tracked() if a.hl_perp}
+    funding = [row for row in derivs.funding_table(venues) if row["coin"] in tracked]
+    for row in funding:
+        row["symbol"] = tracked[row["coin"]]
+        row["zscore"] = derivs.funding_zscore(row["coin"])
+
+    oi_rows = [row for row in derivs.open_interest(contexts, caps)
+               if row["coin"] in tracked]
+    for row in oi_rows:
+        row["symbol"] = tracked[row["coin"]]
+        row["quadrant"] = derivs.oi_price_quadrant(
+            row["oi_change_pct"], row["price_change_pct"])
+
+    # Realised vol and ATR percentile per tracked name.
+    vol_rows = []
+    for asset in registry.tracked():
+        bars = store.read_ohlcv(asset.symbol)
+        if bars.height < 120:
+            continue
+        closes = bars["close"].to_numpy().astype(float)
+        row = {
+            "symbol": asset.symbol,
+            "realised_30d": derivs.realised_volatility(closes, 30),
+            "realised_90d": derivs.realised_volatility(closes, 90),
+            "atr": derivs.atr_percentile(
+                bars["high"].to_numpy().astype(float),
+                bars["low"].to_numpy().astype(float), closes),
+        }
+        vol_rows.append(row)
+
+    implied = {}
+    for currency in ("BTC", "ETH"):
+        series = store.read_onchain(f"deribit_{currency.lower()}", "DVOL")
+        if series.is_empty():
+            continue
+        implied[currency] = {
+            "latest": float(series["value"][-1]),
+            "as_of": str(series["date"][-1]),
+            "series": [{"d": str(d), "v": round(float(v), 2)} for d, v in
+                       zip(series["date"].to_list(), series["value"].to_list(),
+                           strict=False)][-400:],
+        }
+        matching = next((r for r in vol_rows if r["symbol"] == currency), None)
+        if matching:
+            implied[currency]["realised_30d"] = matching["realised_30d"]
+            implied[currency]["premium"] = derivs.vol_premium(
+                matching["realised_30d"], implied[currency]["latest"])
+
+    # Perp availability, from the registry rather than from a venue sweep.
+    availability = [{
+        "symbol": a.symbol,
+        "hyperliquid": bool(a.hl_perp),
+        "binance": bool(a.binance_spot),
+    } for a in registry.tracked()]
+
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "funding": funding,
+        "open_interest": oi_rows,
+        "volatility": vol_rows,
+        "implied": implied,
+        "basis": {c: derivatives.futures_basis(c) for c in ("BTC", "ETH")},
+        "options": {c: derivatives.options_summary(c) for c in ("BTC", "ETH")},
+        "availability": availability,
+        "how_to_read": (
+            "Funding is annualised with EACH VENUE'S OWN interval: Hyperliquid "
+            "funds hourly, Binance and Bybit every four or eight hours, so the "
+            "same raw rate means a different annual cost on each. Using one "
+            "constant can invert the sign of the comparison."),
+        "oi_caveat": (
+            "Open interest has no free history, so OI change is computed from "
+            "our own snapshots and starts accumulating from the first build. "
+            "It is left blank rather than inferred from a single observation."),
+    }
+
+
+def build_breadth() -> dict:
+    """Dominance, stablecoins, breadth and correlations (§6.7)."""
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "dominance": breadth.dominance(
+            store.read_snapshot("global"),
+            store.read_onchain("market", "StablecoinSupply")),
+        "stablecoins": breadth.stablecoin_trend(
+            store.read_onchain("market", "StablecoinSupply")),
+        "stablecoins_by_chain": [
+            row for row in (store.read_snapshot("stablecoins_by_chain")
+                            .sort("observed_at")
+                            .group_by("chain", maintain_order=True).last()
+                            .sort("circulating", descending=True)
+                            .head(15).to_dicts())
+        ] if not store.read_snapshot("stablecoins_by_chain").is_empty() else [],
+        "advance_decline": breadth.advance_decline(store.read_snapshot("top100")),
+        "breadth": breadth.breadth_over_tracked(),
+        "beating_btc": breadth.beating_btc(90),
+        "correlations": breadth.correlations(90),
+        "how_to_read": (
+            "How broad the market is, rather than where it is. Dominance "
+            "excluding stablecoins is the reading that answers whether capital "
+            "has rotated out of Bitcoin: stablecoin cap is now large enough to "
+            "move the include-stables number without anything rotating."),
+    }
+
+
+def build_sectors() -> dict:
+    """Sector indices, rotation and fee growth (§6.8)."""
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "indices": sectors.sector_indices(),
+        "rrg": sectors.rrg("BTC", "sector"),
+        "fee_growth": sectors.sector_fee_growth(),
+        "members": sectors.sector_members(),
+        "how_to_read": (
+            "The thesis is three to five sector rotations rather than a broad "
+            "altseason, so the question this page answers is which sector is "
+            "turning up while still cheap. Equal-weight says what the average "
+            "name did; cap-weight says what the sector's money did. When they "
+            "diverge, one large name is carrying the sector."),
     }
 
 
@@ -429,7 +601,8 @@ def main(argv: list[str] | None = None) -> int:
 
     fetch = sub.add_parser("fetch", help="pull sources into the store")
     fetch.add_argument("--only", default="all",
-                       choices=["all", "prices", "onchain", "fundamentals", "sentiment", "hourly"])
+                       choices=["all", "prices", "onchain", "fundamentals", "derivatives",
+                                "market", "sentiment", "hourly"])
     fetch.add_argument("--symbols", default="")
     fetch.set_defaults(func=cmd_fetch)
 
