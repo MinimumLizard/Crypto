@@ -1,0 +1,22 @@
+# Manual calendar entries (SPEC §6.11).
+#
+# Anything here appears on /geopolitics and in the .ics export. Use it for
+# dates only a human knows about: a governance deadline, a conference, a court
+# date, a personal review point.
+#
+# FOMC dates are scraped from the Fed. Options expiries are computed. Token
+# unlocks live in config/unlocks.yaml. None of those belong here.
+#
+#   events:
+#     - date: 2026-11-03
+#       title: US midterm elections
+#       category: politics
+#       detail: House and Senate; Polymarket odds are on the geopolitics page.
+
+events:
+  - date: 2026-11-03
+    title: US midterm elections
+    category: politics
+    detail: >-
+      House and Senate. The brief names this as a scheduled risk event; event
+      market odds for both chambers are on the same page.

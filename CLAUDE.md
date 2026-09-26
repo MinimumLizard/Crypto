@@ -15,8 +15,9 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P1, P3 (valuation) and P4 (derivatives, breadth, sectors) done and LIVE at
-https://minimumlizard.github.io/Crypto/.** P2 (macro) is next and needs a FRED key.
+**P1, P3 (valuation), P4 (derivatives, breadth, sectors) and P6 (geopolitics,
+radar) done and LIVE at https://minimumlizard.github.io/Crypto/.** P2 (macro)
+and P5 (portfolio) are what remain; P2 needs a FRED key.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
@@ -33,9 +34,14 @@ options), breadth (dominance, stablecoins, participation, correlations) and
 sectors (equal/cap-weight indices, fee growth, RRG). See D019 for exactly which
 parts are real today and which accumulate forward.
 
-Not started: portfolio and alerts (P5), geopolitics and radar (P6), validation
-pages (P7). Those routes exist and say what they will contain and what is
-blocking them.
+P6 shipped two pages: geopolitics (the oil chain, GPR with its threat/act
+split, EPU, GDELT theme spikes, event-market odds, the calendar with an .ics
+export and the narrative log) and radar (the liquidity-gated catalyst score,
+the screener, governance, security incidents and tagged news). See D026 for
+exactly which parts are real today and which are blocked or accumulating.
+
+Not started: portfolio and alerts (P5), validation pages (P7). Those routes
+exist and say what they will contain and what is blocking them.
 
 ## Blockers
 
@@ -136,7 +142,12 @@ Reasoning in PLAN.md §2.
 - **CoinGecko unauthenticated 429s within seconds.** The Demo key is required.
 - **Wikimedia and SEC 403 a generic User-Agent.** It must carry contact details.
 - **Stooq is unreachable from US egress** (both locations, https and http).
-- **GDELT 429s** above one request per five seconds.
+- **GDELT 429s** above one request per five seconds, and the limit is PER
+  SOURCE IP — from a shared egress five seconds is not enough and a first call
+  can need ~40s of backoff (D023). Spacing is 8s, the theme sweep runs to a
+  wall-clock budget so a build never hangs on it, and themes are fetched
+  stalest-first so the set fills in across builds instead of the same two
+  always winning.
 - **rekt.news RSS is 500.** Use DefiLlama `/hacks`.
 - **Three book names have no Binance pair** (FLUID, GEOD, AZTEC) so MiniLizard
   parity cannot hold for them. XMR too, on the watchlist.
@@ -194,12 +205,34 @@ Reasoning in PLAN.md §2.
 - **`series[::2]` drops the last point when the length is even**, which put every
   400-day sector chart a day behind the return printed beside it. Thin with
   `sectors._thin`, which keeps the newest point.
+- **The HTTP cache is binary-safe now, and was not** (D022). It stored
+  `response.text`, so every non-text body came back with each invalid byte
+  replaced by U+FFFD — the 3.2MB GPR workbook returned as 4.0MB of rubbish.
+  It stores base64 now. Old `body` entries still read as text.
+- **The GPR index is a .xls file**, no CSV and no API, so `fastexcel` is a
+  dependency. The workbook also carries GPRD_THREAT and GPRD_ACT; the split is
+  the interesting part.
+- **Never trust a derived label read back from the store** (D024). The event
+  classifier matched "brent" inside "Brentford" and filed a football market
+  under Oil; fixing the matcher did not fix the page, because the append-only
+  store still held the row with its old label. Topics are recomputed from the
+  question on read. Anything this pipeline computed rather than fetched should
+  be recomputed, not trusted.
+- **Tagging news to an asset needs a whole word AND crypto context** (D025).
+  "Uniform" is not UNI and "Sky is blue today" is not SKY. Ambiguous aliases
+  live in `feeds.AMBIGUOUS_ALIASES`.
+- **Three of five Snapshot slugs were wrong and returned empty**, which is
+  indistinguishable from a quiet DAO. Aave is `aavedao.eth`, not `aave.eth`.
+  AERO, SKY, MORPHO and ONDO have no Snapshot space at all — they govern
+  on-chain, and the page says so.
 
 ## Commands
 
 ```
 uv sync --all-extras                       # once
-uv run terminal fetch --only all           # prices | onchain | sentiment | hourly
+uv run terminal fetch --only all           # prices | onchain | fundamentals |
+                                           # derivatives | market | sentiment |
+                                           # geopolitics | feeds | hourly
 uv run terminal build                      # artefacts -> site/public/data
 uv run terminal validate                   # the honesty report; cite it, don't paste it
 uv run tools/probe.py --location <label>   # source probe

@@ -177,11 +177,38 @@ GDELT 200, but **429 under rapid calls** — "limit requests to one every 5
 seconds". Needs spacing and backoff, not replacement. GPR daily file: 200.
 Polymarket Gamma: 200. Kalshi: 200 on the runner.
 
+**Re-probed 2026-09-26, building P6.** GDELT's limit is per source IP and this
+container's egress is shared, so five seconds still returns 429 and a first
+call needed ~40s of backoff. Spacing is now 8s with a wall-clock budget on the
+theme sweep and stalest-first ordering (D023). GPR is a 3.2MB `.xls` — no CSV,
+no API — and carries GPRD, GPRD_THREAT and GPRD_ACT, 15,239 days back to 1985.
+EPU's daily CSV at policyuncertainty.com is 200 and serves 15,243 days from the
+same start; it was not in the original probe and is now used.
+
+Polymarket Gamma pages 100 at a time and `order=volumeNum&ascending=false`
+works, so eight pages reach the liquid end of the book. Kalshi's `/markets`
+list is dominated by multi-leg sports parlays whose title is a comma-joined
+string of selections, and its price fields are `*_dollars` — `last_price` no
+longer exists. Its `/events` endpoint carries clean titles, so topics are
+matched there and the event's markets are priced afterwards.
+
 ### Governance, security, news
 
 Snapshot GraphQL 200. Aave Discourse RSS 200. CoinDesk, SEC and Fed RSS all 200
 (SEC and Wikimedia both need the contactable UA). GitHub API 200 on the runner,
 60 req/h unauthenticated and 5,000/h with the Actions token — use the token.
+
+**Snapshot space slugs, confirmed 2026-09-26.** A guessed slug returns an empty
+proposal list, which reads exactly like a DAO with nothing open, so every slug
+was checked against the API. Real: `aavedao.eth` (981 proposals),
+`uniswapgovernance.eth` (199), `lido-snapshot.eth` (423). NOT real, and removed:
+`aave.eth`, `skyecosystem.eth`, `aerodromefinance.eth`. AERO, SKY, MORPHO and
+ONDO have no Snapshot space — they govern on-chain, which the radar page states
+rather than leaving them looking uncovered.
+
+The Fed's FOMC calendar page has no API but parses reliably: year panels, then
+a month block and a date range per meeting. 54 meetings across the published
+years. The decision lands on the final day of a two-day meeting.
 
 **rekt.news RSS returns 500 and is dropped.** DefiLlama `/hacks` (200) becomes
 the security incident source.

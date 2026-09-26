@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import subprocess
 import sys
 
@@ -23,15 +24,33 @@ import polars as pl
 
 from pipeline import artefacts, health, paths, registry, store
 from pipeline.fetchers import (
+    calendar as calendar_feed,
+)
+from pipeline.fetchers import (
     coingecko,
     coinmetrics,
     defillama,
     derivatives,
+    feeds,
     market,
     prices,
     sentiment,
 )
-from pipeline.metrics import breadth, cycle, derivs, risk, sectors, valuation
+from pipeline.fetchers import (
+    geopolitics as geo_feed,
+)
+from pipeline.metrics import (
+    breadth,
+    cycle,
+    derivs,
+    radar,
+    risk,
+    sectors,
+    valuation,
+)
+from pipeline.metrics import (
+    geopolitics as geo,
+)
 from pipeline.signals import quantile as quantile_model
 
 
@@ -104,6 +123,16 @@ def cmd_fetch(args) -> int:
         result = sentiment.fetch_all()
         _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
 
+    if only in ("all", "geopolitics"):
+        _log("geopolitics: gdelt themes, risk indices, event markets")
+        result = geo_feed.fetch_all()
+        _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
+
+    if only in ("all", "feeds"):
+        _log("feeds: news, governance, security incidents, calendar")
+        result = {**feeds.fetch_all(), **calendar_feed.fetch_all()}
+        _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
+
     if only in ("all", "hourly"):
         _log("prices: hourly bars for the CVD block")
         for asset in registry.tracked():
@@ -149,6 +178,15 @@ def cmd_build(args) -> int:
 
     _log("building sectors")
     artefacts.write("sectors", build_sectors())
+
+    _log("building geopolitics")
+    artefacts.write("geopolitics", build_geopolitics())
+
+    _log("building radar")
+    artefacts.write("radar", build_radar())
+
+    _log("writing the calendar feed")
+    _log(f"  {write_ics()} events -> calendar.ics")
 
     _log("building source health")
     artefacts.write("source-health", artefacts.build_source_health())
@@ -424,6 +462,236 @@ def build_breadth() -> dict:
     }
 
 
+def build_geopolitics() -> dict:
+    """GDELT themes, risk indices, the oil chain, odds and the calendar (§6.11)."""
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "themes": geo.theme_spikes(),
+        "gpr": geo.gpr_split(),
+        "epu": geo.risk_index("epu", "Economic Policy Uncertainty"),
+        "oil_chain": geo.oil_chain(),
+        "events": geo.event_odds(),
+        "calendar": build_calendar(),
+        "narrative": geo.narrative(paths.CONTENT / "narrative.md"),
+        "how_to_read": (
+            "The conditions around the book rather than the book itself. The "
+            "chain at the top is the one the whole macro thesis runs through; "
+            "the theme tracker says which of those conditions the world is "
+            "suddenly talking about, and the odds say what is being priced."),
+    }
+
+
+CALENDAR_PAST_DAYS = 14
+CALENDAR_FORWARD_DAYS = 180
+
+
+def build_calendar() -> dict:
+    """The unified calendar, windowed around today."""
+    frame = store.read_snapshot("calendar")
+    if frame.is_empty():
+        return {"available": False,
+                "reason": "the calendar has not been assembled yet"}
+
+    today = dt.date.today()
+    start = (today - dt.timedelta(days=CALENDAR_PAST_DAYS)).isoformat()
+    end = (today + dt.timedelta(days=CALENDAR_FORWARD_DAYS)).isoformat()
+    windowed = (frame.sort("observed_at")
+                .group_by(["date", "title"], maintain_order=True).last()
+                .filter((pl.col("date") >= start) & (pl.col("date") <= end))
+                .sort("date"))
+
+    rows = []
+    for row in windowed.iter_rows(named=True):
+        when = dt.date.fromisoformat(row["date"])
+        rows.append({
+            "date": row["date"],
+            "days_away": (when - today).days,
+            "title": row["title"],
+            "category": row.get("category", ""),
+            "detail": row.get("detail", ""),
+            "provenance": row.get("provenance", ""),
+            "source": row.get("source", ""),
+        })
+    return {
+        "available": bool(rows),
+        "rows": rows,
+        "window": {"past_days": CALENDAR_PAST_DAYS,
+                   "forward_days": CALENDAR_FORWARD_DAYS},
+        "ics_path": "calendar.ics",
+        "how_to_read": (
+            "Every entry says where it came from. Scraped means read off the "
+            "publisher's own page, computed means derived from a rule, and "
+            "configured means a human typed it. The halving is deliberately "
+            "absent: it depends on block height, which nothing here fetches, "
+            "and a date interpolated from a calendar would be invented."),
+    }
+
+
+def _ics_escape(text: str) -> str:
+    return (str(text).replace("\\", "\\\\").replace(";", "\\;")
+            .replace(",", "\\,").replace("\n", "\\n"))
+
+
+def write_ics() -> int:
+    """Write the subscribable calendar (§6.11 asks for an .ics for the phone).
+
+    All-day VEVENTs. DTEND is exclusive in RFC 5545, so a one-day event ends on
+    the following day; getting that wrong renders every event as zero-length in
+    some clients and as two days long in others.
+    """
+    payload = build_calendar()
+    rows = payload.get("rows") or []
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR", "VERSION:2.0",
+        "PRODID:-//MiniLizard terminal//EN", "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH", "X-WR-CALNAME:MiniLizard terminal",
+    ]
+    for row in rows:
+        start = dt.date.fromisoformat(row["date"])
+        lines += [
+            "BEGIN:VEVENT",
+            # A UID must be STABLE across runs, or a subscribed client treats
+            # every rebuild as a new event and the calendar fills with
+            # duplicates. Python's hash() is salted per process, so it cannot be
+            # used here; a digest of the title can.
+            f"UID:{start.isoformat()}-"
+            f"{hashlib.sha1(row['title'].encode()).hexdigest()[:12]}@minilizard",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{(start + dt.timedelta(days=1)).strftime('%Y%m%d')}",
+            f"SUMMARY:{_ics_escape(row['title'])}",
+            f"DESCRIPTION:{_ics_escape(row.get('detail') or '')} "
+            f"[{_ics_escape(row.get('source') or '')}]",
+            f"CATEGORIES:{_ics_escape(row.get('category') or '')}",
+            "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+
+    paths.ARTEFACTS.mkdir(parents=True, exist_ok=True)
+    # RFC 5545 wants CRLF line endings.
+    (paths.ARTEFACTS / "calendar.ics").write_text("\r\n".join(lines) + "\r\n")
+    return len(rows)
+
+
+def build_radar() -> dict:
+    """The catalyst radar, the screener and the feeds (§6.13)."""
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "radar": radar.catalyst_radar(),
+        "screener": radar.screener(),
+        "governance": build_governance(),
+        "security": build_security(),
+        "news": build_news(),
+        "how_to_read": (
+            "Where volatility is likely to show up over the next fortnight, "
+            "and the feeds that would explain it. This ranks attention, not "
+            "direction: nothing on this page says which way a name goes."),
+    }
+
+
+def build_governance() -> dict:
+    """Open proposals and recently closed ones, kept apart.
+
+    An open proposal has a deadline and is a catalyst; a closed one is history.
+    Mixing them sorted a "closes in" countdown into negative numbers, which is
+    not a countdown at all, and buried the fact that nothing is currently open.
+    """
+    frame = store.read_snapshot("governance")
+    if frame.is_empty():
+        return {"available": False, "reason": "no Snapshot proposals fetched yet"}
+    latest = (frame.sort("observed_at")
+              .group_by(["space", "id"], maintain_order=True).last())
+
+    rows = latest.to_dicts()
+    for row in rows:
+        for key in ("as_of", "observed_at"):
+            row.pop(key, None)
+
+    active = [r for r in rows if r.get("state") == "active"]
+    pending = [r for r in rows if r.get("state") == "pending"]
+    closed = [r for r in rows if r.get("state") not in ("active", "pending")]
+
+    # Soonest deadline first for anything still open; most recent first for
+    # anything that is not, because "oldest closed proposal" is never the lede.
+    active.sort(key=lambda r: (r.get("closes_in_days") is None,
+                               r.get("closes_in_days") or 1e9))
+    pending.sort(key=lambda r: r.get("start") or "")
+    closed.sort(key=lambda r: r.get("end") or "", reverse=True)
+
+    return {
+        "available": True,
+        "open_rows": active + pending,
+        "closed_rows": closed[:25],
+        "active": len(active),
+        "pending": len(pending),
+        # Configured versus answering, not just answering: "2 tracked spaces"
+        # when five are configured reads as a smaller remit rather than as
+        # three spaces that returned nothing.
+        "spaces_configured": sorted(feeds.SNAPSHOT_SPACES.values()),
+        "spaces_answering": sorted({r["space"] for r in rows}),
+        "spaces_silent": sorted(set(feeds.SNAPSHOT_SPACES.values())
+                                - {r["space"] for r in rows}),
+        "governs_elsewhere": feeds.GOVERNS_ELSEWHERE,
+        "how_to_read": (
+            "A fee switch or an emissions change is a supply event with a date "
+            "on it, which is why this sits next to the radar. Open proposals "
+            "are listed soonest-to-close; closed ones are history and are kept "
+            "separate so an empty open list is visible rather than buried."),
+    }
+
+
+def build_security() -> dict:
+    frame = store.read_snapshot("security_incidents")
+    if frame.is_empty():
+        return {"available": False, "reason": "no incident feed fetched yet"}
+    latest = (frame.sort("observed_at")
+              .group_by(["date", "name"], maintain_order=True).last()
+              .sort("date", descending=True))
+    rows = [r for r in latest.head(200).to_dicts()]
+    held = [r for r in rows if r.get("assets")]
+    for row in rows:
+        for key in ("as_of", "observed_at"):
+            row.pop(key, None)
+    return {
+        "available": True,
+        "rows": rows[:40],
+        "touching_book": held[:20],
+        "total": latest.height,
+        "how_to_read": (
+            "DefiLlama's incident feed, newest first. rekt.news RSS returns "
+            "500 and is not used (docs/SOURCES.md). An incident is flagged "
+            "against a tracked name only when its title names that project."),
+    }
+
+
+def build_news() -> dict:
+    frame = store.read_snapshot("feeds")
+    if frame.is_empty():
+        return {"available": False, "reason": "no feed has been fetched yet"}
+    latest = (frame.sort("observed_at")
+              .group_by(["source", "title"], maintain_order=True).last()
+              .sort("published", descending=True))
+    rows = latest.head(60).to_dicts()
+    for row in rows:
+        for key in ("as_of", "observed_at"):
+            row.pop(key, None)
+    tagged = [r for r in rows if r.get("assets")]
+    return {
+        "available": True,
+        "rows": rows,
+        "tagged": tagged[:25],
+        "sources": sorted(set(latest["source"].to_list())),
+        "how_to_read": (
+            "Headlines are tagged to a name only on a whole-word match against "
+            "an alias list, and names that are ordinary English words -- Sky, "
+            "Fluid, Virtual -- additionally need the headline to read like a "
+            "crypto story. An untagged headline stays untagged rather than "
+            "being guessed at."),
+    }
+
+
 def build_sectors() -> dict:
     """Sector indices, rotation and fee growth (§6.8)."""
     return {
@@ -609,7 +877,8 @@ def main(argv: list[str] | None = None) -> int:
     fetch = sub.add_parser("fetch", help="pull sources into the store")
     fetch.add_argument("--only", default="all",
                        choices=["all", "prices", "onchain", "fundamentals", "derivatives",
-                                "market", "sentiment", "hourly"])
+                                "market", "sentiment", "geopolitics", "feeds",
+                                "hourly"])
     fetch.add_argument("--symbols", default="")
     fetch.set_defaults(func=cmd_fetch)
 

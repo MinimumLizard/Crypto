@@ -530,3 +530,136 @@ venue rather than the market's leverage on a name.
 Why not aggregate it instead: the venues that would have to be summed are the
 ones that refuse a US address, and every GitHub runner is one. One venue
 labelled honestly beats an aggregate that silently omits most of the market.
+
+---
+
+## 2026-09-26 — D022: the HTTP cache corrupted every binary response
+
+The GPR index is published only as a 3.2MB `.xls` workbook — no CSV, no API.
+It downloaded fine and parsed to nothing. The magic bytes told the story: the
+file began `EF BF BD EF BF BD 11 E0` where an OLE2 document begins
+`D0 CF 11 E0`, and it was 4,021,325 bytes against the 3,267,072 the server
+sent.
+
+`http.request`'s disk cache stored `response.text`. Decoding arbitrary bytes as
+UTF-8 replaces each invalid byte with U+FFFD, and re-encoding that yields three
+bytes where there was one. Every binary response served from cache was
+therefore silently mangled, and the inflation is exactly the signature.
+
+Nothing had hit it before because every source until now returned JSON or XML.
+The cache now stores the body base64-encoded, which is lossless for both. Old
+entries keep a `body` key and are still served as text, so no cache needs
+clearing.
+
+The lesson is narrower than "don't use text mode": it is that a cache must round
+-trip whatever it is given, and a cache used only on text will pass every test
+until the day it is not.
+
+---
+
+## 2026-09-26 — D023: GDELT is rate-limited per address, so the sweep is budgeted
+
+GDELT enforces one request per five seconds and answers 429 otherwise. That
+limit is per source IP, and this container's egress is shared, so five seconds
+still returns 429 — a first call needed roughly forty seconds of backoff to get
+through, and ten themes at two calls each (volume and tone are separate modes)
+could not finish at all.
+
+Three changes, none of which pretend the limit is not there:
+
+1. **Spacing raised to eight seconds**, above the documented minimum, because
+   the documented minimum is not what a shared address gets.
+2. **A wall-clock budget on the whole sweep.** A daily build must not hang for
+   an hour on one source. Themes not reached are recorded as `skipped` with the
+   reason, and the store carries what did land.
+3. **Stalest-first ordering.** With a fixed order and a budget, the themes at
+   the top always refresh and the ones at the bottom never do. Ordering by how
+   long ago each theme last landed means the set fills in across builds instead
+   of two themes being current beside eight that are permanently empty.
+
+The site says how many of the configured themes have data and names the ones
+that do not, because an absent theme means "not asked", not "quiet", and those
+are opposite readings.
+
+---
+
+## 2026-09-26 — D024: a derived label is recomputed on read, never trusted from the store
+
+The event-market classifier matched topics by substring. "brent" is a substring
+of "Brentford", so "Will Brentford win the 2026-27 EPL Championship?" was filed
+under Oil and rendered on the geopolitics page between two crude-oil markets.
+
+Word-boundary matching fixed the classifier. It did not fix the page: the store
+is append-only, the row had been written with its wrong label, and the reader
+took the stored label at face value. The bad row survived the fix.
+
+So the topic is now derived from the question at READ time and the stored label
+is ignored. A classification is derived data. Storing it is fine as a record of
+what was believed; trusting it is what freezes a past bug into the history. A
+row that matches no topic under the current rules drops out rather than
+persisting under an old one.
+
+This generalises: anywhere this pipeline stores something it computed rather
+than something a source said, the computation is the thing to re-run.
+
+---
+
+## 2026-09-26 — D025: news is tagged only on a whole word with crypto context
+
+Tagging headlines to assets is a false-positive machine. Substring matching
+turns "Uniform Resource Locator" into UNI. Whole-word matching fixes that and
+still turns "Sky is blue today" into SKY, because the project's real name IS an
+ordinary English word — as are Fluid, Virtual, Dusk, Ray and Link.
+
+Two rules, both needed:
+
+- every alias matches at word boundaries only;
+- an alias that is an ordinary English word additionally requires the headline
+  to contain a crypto-context term before it counts.
+
+An untagged headline stays untagged and still appears in the feed. That is the
+right failure direction: a missing tag costs a reader one click, a wrong tag
+puts an unrelated story on an asset page and quietly misinforms.
+
+Governance spaces got the same treatment from the other end. Three of the five
+Snapshot slugs in the first draft did not exist, and a non-existent space
+returns an empty list that is indistinguishable from a quiet DAO. Every slug is
+now confirmed against the API, and the four book names that govern on-chain
+rather than on Snapshot are named on the page so their absence reads as a fact
+about where they vote rather than a hole in the coverage.
+
+---
+
+## 2026-09-26 — D026: what P6 can and cannot show today
+
+**Real today:** GDELT theme coverage and tone with a non-overlapping spike
+score; the Caldara-Iacoviello GPR index with its threat/act split, 15,239 days
+back to 1985; EPU, 15,243 days; event-market odds across eleven topics from
+Polymarket and Kalshi; the unified calendar with FOMC dates scraped from the
+Fed, computed options expiries and configured events, exported as a
+subscribable `.ics`; the catalyst radar, liquidity-gated; the top-100 screener;
+Snapshot governance; DefiLlama's incident feed; and three news feeds tagged by
+asset.
+
+**Blocked on a FRED key:** five of the seven links in the oil chain — oil,
+inflation, the Fed, real yields and the dollar. The chain is drawn anyway with
+each empty link naming the series it needs, because the shape of the argument
+is the point and hiding the gaps would change the claim being made. Liquidity
+and crypto fill from sources already fetched.
+
+**Accumulating from the first build:** event-market odds history. Neither venue
+serves a free price series, so the 1d column is blank until there are two
+snapshots.
+
+**Deliberately absent:** the halving estimate. It depends on block height,
+which nothing in this project fetches, and a date interpolated from a calendar
+would be an invented number on a page whose whole job is to say where numbers
+come from.
+
+**Deliberately not automated:** the seed-sleeve tracker. §6.13 says it is a
+manual YAML tracker and that discovery should not be automated; there is
+nothing to build until the file has entries.
+
+**Universe caveat:** the screener runs over the top 100, which is the slice the
+daily build already fetches. §6.13 asks for rank 1,000, which is four more
+paged calls against a rate-limited key. The panel names the universe it has.

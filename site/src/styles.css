@@ -226,3 +226,61 @@ footer.site strong { color: var(--ink-2); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* --- P6: the oil chain, radar bars and feeds ------------------------------ */
+
+/* The chain scrolls sideways rather than wrapping: the ORDER is the argument,
+   and a wrapped row reads as two unrelated groups. */
+.chain {
+  display: flex; align-items: stretch; gap: 6px;
+  overflow-x: auto; padding-bottom: 6px;
+}
+.chain-link {
+  flex: 1 0 128px; min-width: 128px;
+  background: var(--plane-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 9px 10px;
+}
+.chain-link.empty { border-style: dashed; opacity: 0.75; }
+.chain-link .k {
+  font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.chain-link .v { font-family: var(--mono); font-size: 18px; margin-top: 2px; }
+.chain-link .v.na { color: var(--muted); }
+.chain-link .u { font-size: 11px; color: var(--ink-2); }
+.chain-link .n { font-size: 11px; margin-top: 2px; }
+.chain-link .src { font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+.chain-arrow {
+  align-self: center; color: var(--ink-2); font-size: 15px; flex: 0 0 auto;
+}
+
+/* A component score, 0 to 1. The number is in the title attribute and the bar
+   is never the only thing carrying it -- colour and length are a second
+   channel, not the meaning. */
+.minibar {
+  display: inline-block; width: 44px; height: 7px; border-radius: 2px;
+  background: var(--plane-2); border: 1px solid var(--border); overflow: hidden;
+  vertical-align: middle;
+}
+.minibar i { display: block; height: 100%; background: var(--accent); }
+
+.gated { margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+.gated summary { cursor: pointer; padding: 4px 0; }
+.gated ul { margin: 6px 0 0; padding-left: 18px; }
+.gated li { margin-bottom: 3px; }
+
+.topic { margin-bottom: 16px; }
+.topic h3 {
+  font-size: 12px; color: var(--ink-2); margin: 0 0 6px;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+.feed { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.feed li {
+  padding: 5px 0; border-bottom: 1px solid var(--border); line-height: 1.5;
+}
+.feed li:last-child { border-bottom: 0; }
+
+.note { border-left: 2px solid var(--accent); padding-left: 12px; margin: 0 0 14px; }
+.note h3 { font-family: var(--mono); font-size: 12px; margin: 0 0 4px; color: var(--ink-2); }
+.note p { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }

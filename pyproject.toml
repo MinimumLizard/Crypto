@@ -11,6 +11,8 @@ dependencies = [
     "scipy>=1.13",
     "numpy>=1.26",
     "pyyaml>=6.0",
+    # The GPR index is published only as a .xls workbook -- no CSV, no API.
+    "fastexcel>=0.12",
 ]
 
 [project.optional-dependencies]

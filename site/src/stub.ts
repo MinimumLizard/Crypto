@@ -34,14 +34,9 @@ const PLANNED: Record<string, { phase: string; what: string; blocked?: string }>
     + 'labour and inflation, and the liquidity and business-cycle composites.',
     blocked: 'Needs a free FRED API key. Without it the whole page has no data, so it '
       + 'is not shipped half-built.' },
-  geopolitics: { phase: 'P6', what: 'GDELT theme volume and tone, the geopolitical risk '
-    + 'index, the oil → inflation → Fed → liquidity chain with live values, '
-    + 'and event-market odds.' },
   portfolio: { phase: 'P5', what: 'The book monitor, deployment tranches, the open-items '
     + 'tracker and an AU CGT discount tracker — all computed in your browser, with '
     + 'holdings never leaving the device.' },
-  radar: { phase: 'P6', what: 'Where volatility is likely: unlocks, governance votes, '
-    + 'funding extremes, OI and volume spikes, and names sitting on a key level.' },
 };
 
 async function main(): Promise<void> {

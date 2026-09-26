@@ -21,6 +21,8 @@ const ROUTES = [
   ['derivatives', '/pages/derivatives.html'],
   ['breadth', '/pages/breadth.html'],
   ['sectors', '/pages/sectors.html'],
+  ['geopolitics', '/pages/geopolitics.html'],
+  ['radar', '/pages/radar.html'],
   ['macro-stub', '/pages/macro.html'],
 ];
 const SIZES = [['desktop', 1440, 1200], ['mobile', 390, 900]];

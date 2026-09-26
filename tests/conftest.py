@@ -3,6 +3,25 @@ import datetime as dt
 import numpy as np
 import pytest
 
+from pipeline import health, paths
+
+
+@pytest.fixture
+def tmp_store(tmp_path, monkeypatch):
+    """Point every path at a temp dir so a test never touches real data.
+
+    Opt-in rather than autouse: the indicator and quantile tests are pure and
+    do not want the cost, and a test that DOES touch the store should have to
+    say so.
+    """
+    for name in ("DATA", "RAW", "OHLCV", "SNAPSHOTS", "MACRO", "ONCHAIN",
+                 "FUNDAMENTALS"):
+        monkeypatch.setattr(paths, name, tmp_path / name.lower())
+    monkeypatch.setattr(paths, "HEALTH", tmp_path / "source_health.parquet")
+    monkeypatch.setattr(paths, "ARTEFACTS", tmp_path / "artefacts")
+    health._pending.clear()
+    yield tmp_path
+
 
 @pytest.fixture
 def synthetic_bars():

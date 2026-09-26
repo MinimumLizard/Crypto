@@ -9,11 +9,18 @@ stops being free:
   CoinGecko answers 429 within a handful of calls unauthenticated.
 * a raw response cache, so re-running the pipeline on the same day re-reads
   disk instead of the network. That is what makes `fetch` idempotent (§10) and
-  is also the politest thing we can do.
+  is also the politest thing we can do. It stores the body base64-encoded: an
+  earlier version stored `response.text`, which silently corrupted every binary
+  payload, because decoding arbitrary bytes as UTF-8 replaces each invalid byte
+  with U+FFFD and re-encoding then yields different bytes. The GPR workbook
+  arrived 23% larger with its OLE2 magic replaced by three replacement
+  characters. Entries written by that version are still readable and are
+  treated as text.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import time
@@ -29,13 +36,20 @@ UA = ("MiniLizardTerminal/0.1 (personal research dashboard; "
 # Minimum seconds between calls to a host. Values come from the probe, not from
 # the documentation: GDELT states one per five seconds and enforces it.
 HOST_SPACING = {
-    "api.gdeltproject.org": 5.0,
+    # GDELT documents one request per five seconds. From a shared egress that
+    # budget is contended and five seconds still returns 429, so this is set
+    # slower than the documented minimum on purpose.
+    "api.gdeltproject.org": 8.0,
     "api.coingecko.com": 2.5,
     "community-api.coinmetrics.io": 1.0,
     "api.llama.fi": 0.4,
     "wikimedia.org": 1.0,
     "gamma-api.polymarket.com": 1.0,
     "api.elections.kalshi.com": 1.0,
+    "www.matteoiacoviello.com": 1.0,
+    "www.policyuncertainty.com": 1.0,
+    "hub.snapshot.org": 1.0,
+    "api.github.com": 1.0,
 }
 DEFAULT_SPACING = 0.15
 
@@ -86,8 +100,12 @@ def request(
         age_hours = (time.time() - cached.stat().st_mtime) / 3600
         if age_hours < cache_hours:
             stored = json.loads(cached.read_text())
+            # "b64" is lossless. "body" is the old text-only format; an entry in
+            # that format can only be served back as text, which is what it was.
+            body = (base64.b64decode(stored["b64"]) if "b64" in stored
+                    else stored["body"].encode())
             response = httpx.Response(
-                status_code=stored["status"], content=stored["body"].encode(),
+                status_code=stored["status"], content=body,
                 headers=stored.get("headers", {}), request=httpx.Request(method, url))
             return response
 
@@ -118,7 +136,8 @@ def request(
         if cache_hours > 0:
             paths.RAW.mkdir(parents=True, exist_ok=True)
             cached.write_text(json.dumps({
-                "status": response.status_code, "body": response.text,
+                "status": response.status_code,
+                "b64": base64.b64encode(response.content).decode("ascii"),
                 "headers": {"content-type": response.headers.get("content-type", "")},
             }))
         return response
