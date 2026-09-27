@@ -17,7 +17,7 @@ export const ROUTES: { path: string; label: string; built: boolean }[] = [
   { path: 'breadth', label: 'Breadth', built: true },
   { path: 'sectors', label: 'Sectors', built: true },
   { path: 'derivatives', label: 'Derivatives', built: true },
-  { path: 'macro', label: 'Macro', built: false },
+  { path: 'macro', label: 'Macro', built: true },
   { path: 'geopolitics', label: 'Geopolitics', built: true },
   { path: 'portfolio', label: 'Portfolio', built: false },
   { path: 'radar', label: 'Radar', built: true },

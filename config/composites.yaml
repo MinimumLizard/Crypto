@@ -1,0 +1,29 @@
+# Family weights for the macro composites (SPEC §7.3).
+#
+# These are NOT secret and NOT in .gitignore, unlike config/weights.yaml. A
+# composite is only honest if the reader can see how it was built, so the
+# weights that produce a published number live in the open.
+#
+# A family missing from a composite's block is weighted 1.0. A family with no
+# available components is dropped from the weighted mean entirely and named on
+# the page, so the number is never quietly computed over fewer inputs than it
+# claims.
+#
+# Higher composite = tighter conditions, or later in the cycle.
+
+weights:
+  liquidity:
+    # Policy and credit lead; the dollar and volatility confirm rather than
+    # drive, so they carry less.
+    Policy: 1.5
+    Credit: 1.5
+    Dollar: 1.0
+    Volatility: 0.75
+
+  business_cycle:
+    # Labour is the least revised and least ambiguous of these, and the curve
+    # has the longest record as a turning-point signal.
+    Labour: 1.5
+    Curve: 1.25
+    Inflation: 1.0
+    Activity: 1.0

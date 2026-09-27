@@ -172,3 +172,18 @@ def weights() -> dict[str, Any] | None:
     if not path.exists():
         return None
     return yaml.safe_load(path.read_text())
+
+
+def composite_weights() -> dict[str, dict[str, float]] | None:
+    """Family weights for the macro composites (§7.3).
+
+    Unlike target weights these are NOT private -- they are a description of
+    how a published number is constructed, and §7.3 requires that to be
+    visible. An absent file means every family is weighted equally, which is
+    stated on the page rather than assumed.
+    """
+    path = paths.CONFIG / "composites.yaml"
+    if not path.exists():
+        return None
+    loaded = yaml.safe_load(path.read_text()) or {}
+    return loaded.get("weights") or None

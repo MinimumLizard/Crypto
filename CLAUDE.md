@@ -15,9 +15,9 @@ evidence is `docs/SOURCES.md`.
 
 ## Current phase
 
-**P1, P3 (valuation), P4 (derivatives, breadth, sectors) and P6 (geopolitics,
-radar) done and LIVE at https://minimumlizard.github.io/Crypto/.** P2 (macro)
-and P5 (portfolio) are what remain; P2 needs a FRED key.
+**P1, P2 (macro), P3 (valuation), P4 (derivatives, breadth, sectors) and P6
+(geopolitics, radar) done and LIVE at https://minimumlizard.github.io/Crypto/.**
+P5 (portfolio) and P7 (validation) are what remain.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
@@ -39,6 +39,13 @@ split, EPU, GDELT theme spikes, event-market odds, the calendar with an .ics
 export and the narrative log) and radar (the liquidity-gated catalyst score,
 the screener, governance, security incidents and tagged news). See D026 for
 exactly which parts are real today and which are blocked or accumulating.
+
+P2 shipped the macro page: Fed net liquidity with its 13-week change, the
+policy path and FOMC countdown, rates/dollar/conditions with own-history
+percentiles, inflation, labour with the claims-against-52-week-low read,
+commodities and ratios, BTC correlations, and the two 0-1 composites (§7.3)
+with every component visible. It reads the FRED series `fred.py` fetches; with
+no key every panel names the series it wants and shows nothing.
 
 Not started: portfolio and alerts (P5), validation pages (P7). Those routes
 exist and say what they will contain and what is blocking them.
@@ -67,8 +74,9 @@ exist and say what they will contain and what is blocking them.
    32 `fred/*` rows read ok; without it they read `needs_key`. Nothing is ever
    substituted from another source — see D028 for why DXY is not DTWEXBGS.
 
-   Still to build: the macro page itself (§6.10). The route is a stub. The oil
-   chain fills as soon as the five series in `fred.OIL_CHAIN_SERIES` land.
+   The macro page (§6.10) is now built and reads these series. With no key it
+   renders every panel naming the series it wants; the oil chain on
+   /geopolitics fills as soon as the five in `fred.OIL_CHAIN_SERIES` land.
 3. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
 4. **RESOLVED 2026-09-27: Pages source is now "GitHub Actions".** The legacy
    `pages build and deployment` workflow is retired and no longer fires on a
@@ -245,6 +253,17 @@ Reasoning in PLAN.md §2.
   indistinguishable from a quiet DAO. Aave is `aavedao.eth`, not `aave.eth`.
   AERO, SKY, MORPHO and ONDO have no Snapshot space at all — they govern
   on-chain, and the page says so.
+- **Net liquidity has a unit trap** (§6.10). WALCL and WTREGEN publish in
+  MILLIONS, RRPONTSYD in BILLIONS. Subtracting them raw is wrong by 1000x and
+  still looks like a plausible few trillion. `macro.net_liquidity` converts
+  first; a test pins it.
+- **`daily.yml` has `concurrency: daily-build`**, so a second dispatch QUEUES
+  behind the first rather than running beside it. A build stuck on a step
+  blocks every later one; cancel the stuck run to release the lock. Seen
+  2026-09-27 with `npm run build` hanging 20+ minutes on a step that takes two
+  seconds locally.
+- **A unit must never be appended to the em-dash that stands for a missing
+  value.** "—pp" reads as a measurement. `macro.ts` has `withUnit` for this.
 
 ## Commands
 

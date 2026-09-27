@@ -44,6 +44,7 @@ from pipeline.metrics import (
     breadth,
     cycle,
     derivs,
+    macro,
     radar,
     risk,
     sectors,
@@ -184,6 +185,9 @@ def cmd_build(args) -> int:
 
     _log("building sectors")
     artefacts.write("sectors", build_sectors())
+
+    _log("building macro")
+    artefacts.write("macro", build_macro())
 
     _log("building geopolitics")
     artefacts.write("geopolitics", build_geopolitics())
@@ -465,6 +469,26 @@ def build_breadth() -> dict:
             "excluding stablecoins is the reading that answers whether capital "
             "has rotated out of Bitcoin: stablecoin cap is now large enough to "
             "move the include-stables number without anything rotating."),
+    }
+
+
+def build_macro() -> dict:
+    """Macro and liquidity (§6.10)."""
+    return {
+        "as_of": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "net_liquidity": macro.net_liquidity(),
+        "rates": macro.rates_table(),
+        "commodities": macro.commodities(),
+        "correlations": macro.correlations(),
+        "labour": macro.labour(),
+        "inflation": macro.inflation(),
+        "policy": macro.policy_path(),
+        "composites": macro.composites(),
+        "how_to_read": (
+            "The conditions the whole book trades inside. Liquidity first, "
+            "because it is the variable the thesis runs on; the composites at "
+            "the end are this project's own constructions and show every "
+            "component that went into them."),
     }
 
 

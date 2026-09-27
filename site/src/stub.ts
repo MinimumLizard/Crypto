@@ -30,10 +30,6 @@ const PLANNED: Record<string, { phase: string; what: string; blocked?: string }>
   derivatives: { phase: 'P4', what: 'Funding across Hyperliquid, Binance and Bybit '
     + '(annualised on each venue’s own interval), open interest, the OI-vs-price '
     + 'quadrant, Deribit DVOL and the futures basis.' },
-  macro: { phase: 'P2', what: 'Fed net liquidity, rates and real yields, the dollar, '
-    + 'labour and inflation, and the liquidity and business-cycle composites.',
-    blocked: 'Needs a free FRED API key. Without it the whole page has no data, so it '
-      + 'is not shipped half-built.' },
   portfolio: { phase: 'P5', what: 'The book monitor, deployment tranches, the open-items '
     + 'tracker and an AU CGT discount tracker — all computed in your browser, with '
     + 'holdings never leaving the device.' },
