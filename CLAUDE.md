@@ -53,34 +53,47 @@ exist and say what they will contain and what is blocking them.
    Drop cases into that file to activate it. Most useful: BTC and ETH (V8) plus
    SOL, AAVE, UNI (V10), ~5 dates each spanning a regime flip, a trend and a
    chop stretch.
-2. **No FRED key**, so the whole macro page (§6.10) has no data and is not
-   built. Everything else degrades gracefully; macro simply has no source.
+2. **FRED: the fetcher now exists; the macro PAGE does not.** `pipeline/
+   fetchers/fred.py` pulls 32 series (`fetch --only macro`) and is wired into
+   `fetch --only all`. `daily.yml` already passes `FRED_API_KEY` through.
+
+   Until 2026-09-27 there was no FRED code at all — only `store.write_macro`
+   waiting and the env var being passed to nothing. The oil chain on
+   /geopolitics was written to read `store.read_macro` and so could never have
+   filled, key or no key. Adding the secret alone changes nothing; the fetcher
+   was the missing half.
+
+   Whether the key is actually set is visible on `/source-health`: with it,
+   32 `fred/*` rows read ok; without it they read `needs_key`. Nothing is ever
+   substituted from another source — see D028 for why DXY is not DTWEXBGS.
+
+   Still to build: the macro page itself (§6.10). The route is a stub. The oil
+   chain fills as soon as the five series in `fred.OIL_CHAIN_SERIES` land.
 3. **No local (non-US) probe run.** See `docs/SOURCES.md`, "The missing datapoint".
-4. **Pages source is still "Deploy from a branch" and MUST be changed to
-   "GitHub Actions"** at Settings → Pages. Until it is, the site keeps
-   reverting to 404 and there is no way to fix it from here: the Pages API
-   returns 403 through this environment's proxy.
+4. **RESOLVED 2026-09-27: Pages source is now "GitHub Actions".** The legacy
+   `pages build and deployment` workflow is retired and no longer fires on a
+   push, so the site no longer 404s between a push and the next `daily.yml`
+   run. Settings -> Pages confirms the source and that the last deploy came
+   from the Daily build workflow.
 
-   The mechanism, because it is genuinely confusing. Two publishers are
-   fighting over the same site:
+   Kept for the record, because the failure mode was genuinely confusing and
+   cost several deploy cycles: with the source set to "Deploy from a branch",
+   two publishers fought over the same site. `daily.yml` ran
+   `actions/deploy-pages` and published the real build; the legacy builder
+   fired on every push to the default branch and republished that branch's
+   ROOT, which has no `index.html` because the site lives in `site/` and its
+   output is gitignored. Whichever ran last won. On 2026-09-25 the Actions
+   deploy put the site up at 03:27 and an ordinary commit at 03:33 took it
+   straight back down.
 
-   - `daily.yml` runs `actions/deploy-pages`, which publishes the real built
-     site. This works and has been verified serving live data.
-   - The legacy `pages build and deployment` workflow (it shows up with
-     `event: dynamic` and is not a file in this repo) fires on **every push to
-     the default branch** and republishes that branch's ROOT. The root has no
-     `index.html` — the site lives in `site/` and its build output is
-     gitignored — so it publishes nothing and every path 404s.
+   Re-verifying liveness after the session's last push is still the right
+   habit, but it is no longer a race. Note the Pages API returns 403 through
+   this environment's proxy, so the setting cannot be read or changed from
+   here -- only observed through its effects.
 
-   Whichever ran last wins. On 2026-09-25 the Actions deploy put the site up at
-   03:27, and a routine commit at 03:33 triggered the legacy builder, which
-   took it straight back down.
+   Outstanding and cosmetic: **Enforce HTTPS is off.** `http://` serves 200
+   without redirecting. One checkbox on the same settings page.
 
-   **So: after any push, the site is 404 until `daily.yml` runs again.** Do not
-   report the site as live off the back of an earlier check — re-verify with
-   `curl -s -o /dev/null -w '%{http_code}' https://minimumlizard.github.io/Crypto/`
-   AFTER the last push of the session. Changing the source to GitHub Actions
-   retires the legacy builder and ends this permanently.
 5. **The schedule fires, but ~4h40m late.** Resolved as a blocker: `daily.yml`
    ran on `event: schedule` on 2026-09-25 (run 5) and 2026-09-26 (run 6), so
    the cron is live and the build no longer depends on a manual dispatch. It

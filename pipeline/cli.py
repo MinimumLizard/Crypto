@@ -32,6 +32,7 @@ from pipeline.fetchers import (
     defillama,
     derivatives,
     feeds,
+    fred,
     market,
     prices,
     sentiment,
@@ -121,6 +122,11 @@ def cmd_fetch(args) -> int:
     if only in ("all", "sentiment"):
         _log("sentiment: fear & greed, wikipedia page views")
         result = sentiment.fetch_all()
+        _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
+
+    if only in ("all", "macro"):
+        _log("macro: fred series")
+        result = fred.fetch_all()
         _log("  " + ", ".join(f"{k}={v}" for k, v in result.items()))
 
     if only in ("all", "geopolitics"):
@@ -877,7 +883,7 @@ def main(argv: list[str] | None = None) -> int:
     fetch = sub.add_parser("fetch", help="pull sources into the store")
     fetch.add_argument("--only", default="all",
                        choices=["all", "prices", "onchain", "fundamentals", "derivatives",
-                                "market", "sentiment", "geopolitics", "feeds",
+                                "market", "macro", "sentiment", "geopolitics", "feeds",
                                 "hourly"])
     fetch.add_argument("--symbols", default="")
     fetch.set_defaults(func=cmd_fetch)

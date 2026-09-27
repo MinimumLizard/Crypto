@@ -245,3 +245,26 @@ the browser.
 CoinGecko free tier and TradingView Lightweight Charts (Apache-2.0) both require
 attribution; both go in the site footer, along with DefiLlama, CoinMetrics
 Community, FRED, GDELT and the Caldara–Iacoviello GPR index.
+
+
+## Key-free alternatives to the FRED series (tested 2026-09-27)
+
+Every link the oil chain needs has a free source that needs no key. None is
+used as a stand-in for FRED (D028) — they are recorded here as fallbacks to
+wire later under their OWN labels.
+
+| FRED series | Alternative | Result |
+|---|---|---|
+| `DCOILBRENTEU` | Yahoo chart API, `BZ=F` | 200, Brent front-month $97.44 |
+| `CPIAUCSL` | BLS API v1, POST `CUUR0000SA0` | 200, 2026-M08 = 334.980 |
+| `DFF` | NY Fed `markets.newyorkfed.org/api/rates/unsecured/effr` | 200, 3.88% at 2026-09-24 |
+| `DFII10` | Treasury daily real yield curve CSV | 200, carries the 10 YR column |
+| `DTWEXBGS` | Yahoo chart API, `DX-Y.NYB` | 200, DXY 101.035 |
+
+Caveats that stop these being drop-in: DXY is six currencies and mostly euro
+against DTWEXBGS's 26 trade-weighted; Brent futures are not Brent spot; BLS v1
+unregistered caps at 25 queries a day and serves the restated series rather
+than vintages; the Yahoo chart endpoint is undocumented.
+
+Not available without a key: EIA (403 unauthenticated). The Fed's own H.10
+download endpoint returns 200 with a zero-length body for the series IDs tried.

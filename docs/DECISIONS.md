@@ -696,3 +696,39 @@ The general lesson is the one D022 also taught from a different direction: when
 a decoder fails on someone else's response, the bytes that arrived are the
 evidence, and discarding them for the decoder's error message throws away the
 only thing that would have explained it.
+
+---
+
+## 2026-09-27 — D028: a missing source is never filled from a near-enough one
+
+Adding `FRED_API_KEY` to the repository secrets was expected to fill the oil
+chain on /geopolitics. It could not have: there was no FRED fetcher. The store
+had `write_macro` and `read_macro` waiting, `daily.yml` passed the environment
+variable through, and nothing in `pipeline/` referenced FRED at all. The
+rendering half had been built and the fetching half never was, and because the
+panel's empty state correctly said "needs a FRED API key", the gap read as a
+missing key rather than missing code. I told the owner the chain would fill
+automatically, which was wrong, and the mistake is recorded here because the
+shape of it — an honest error message describing the wrong cause — is easy to
+repeat.
+
+Every one of the five blocked links has a free, key-less alternative, all of
+them tested and working: Yahoo `BZ=F` for Brent, BLS for CPI, the New York
+Fed's own API for the effective funds rate, Treasury's daily real yield curve
+for the 10-year TIPS yield, Yahoo `DX-Y.NYB` for a dollar index. None of them
+is used as a silent stand-in, for three reasons:
+
+- **They are not the same series.** ICE's DXY is six currencies and roughly
+  58% euro; FRED's DTWEXBGS is 26 trade-weighted. Brent front-month futures
+  are not Brent spot. Putting either under the label the chain uses would be
+  the same defect as the Hyperliquid-only open interest (D021): a true number
+  under a label that invites a conclusion it cannot support.
+- **No vintages.** PLAN §5.3 says the subtle look-ahead risk here is source
+  revisions, and CPI is revised. FRED's sibling ALFRED serves what was
+  published on a given day; BLS serves today's restated series. A backtest
+  touching the second is quietly cheating.
+- **Yahoo is undocumented** and breaks without notice.
+
+So `fred.py` records `needs_key` for every series when the key is absent and
+returns nothing. The alternatives stay documented in `docs/SOURCES.md` as
+fallbacks worth wiring later BEHIND their own labels, never under FRED's.
