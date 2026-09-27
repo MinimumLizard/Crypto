@@ -732,3 +732,59 @@ is used as a silent stand-in, for three reasons:
 So `fred.py` records `needs_key` for every series when the key is absent and
 returns nothing. The alternatives stay documented in `docs/SOURCES.md` as
 fallbacks worth wiring later BEHIND their own labels, never under FRED's.
+
+---
+
+## 2026-09-27 — D029: a power-law detrend does not fix an exponential series
+
+The first macro build with real FRED data put Core PCE's risk component at
+exactly 1.000. A component pinned at the maximum is not a reading, it is a
+component that has stopped measuring anything, and it was dragging a quarter of
+the business-cycle composite with it.
+
+`risk.detrended` fits `log(value)` against `log(TIME)` — a power law. That is
+deliberate and correct for Bitcoin: it is the model §7.2's quantile replication
+is built on, and the BTC scorecard detrends cleanly under it today (price
+0.335, market cap 0.279, nothing pinned). The fit was written for that job and
+still does it.
+
+A series that grows at a constant RATE is exponential, not power-law. Fitted
+against log-time it is systematically under-modelled, the residual grows
+without bound, and the expanding percentile pins at 1.000 and stays there.
+Reproduced directly: a synthetic index compounding at 2% a year detrends to a
+risk of exactly 1.0 at every one of its last points, while a genuine power-law
+series with noise detrends to a rank that moves across the range and is pinned
+only 2.2% of the time.
+
+`risk.py` is therefore left alone. The fix is in `macro.py`, which now declares
+a transform per component — `level`, `yoy` or `trend` — and scores anything
+that compounds on its year-on-year change. That is also what the number means:
+"inflation" IS the year-on-year change of a price index, and job growth is the
+cycle signal, not the level of employment. Payrolls moved the same way.
+
+The year-on-year change is matched by DATE, not by row offset. Twelve rows back
+is a year on a monthly series and a quarter on a weekly one.
+
+The general lesson: a detrend is a MODEL, and inheriting one that was fitted
+for a different series is how a component quietly stops carrying information
+while still rendering a confident number.
+
+---
+
+## 2026-09-27 — D030: three display defects the first real render exposed
+
+None of these were visible before the macro page had data in it.
+
+**A percentile of 99.6 rendered as "100%".** Rounding to zero decimals claims
+an all-time record that has not happened. Extremes now keep a decimal — the
+same defect as the "1th percentile" caught in P1, from the opposite end.
+
+**Claims rising off their 52-week low were coloured green.** `dirClass` treats
+positive as favourable, but claims rising means labour is WEAKENING, so the
+colour said the opposite of the number. Colour is a role in this project and it
+was carrying the wrong one; it is removed and the note now reads "up means
+weakening". Inverting the colour would have been the other option and is
+worse — it makes the reader learn a per-panel convention.
+
+**A unit appended to the em-dash that stands for a missing value** produced
+"—pp", which reads as a measurement rather than an absence.

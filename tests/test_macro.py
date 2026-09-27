@@ -187,3 +187,62 @@ def test_correlation_differences_a_series_that_goes_negative(tmp_store):
     # returned a correlation with the sign flipped.
     assert row["available"] is True
     assert -1.0 <= row["correlation"] <= 1.0
+
+
+def test_a_compounding_series_is_not_scored_on_its_level(tmp_store):
+    """A price index detrends to a percentile pinned at 1.000 and stays there.
+
+    `risk.detrended` fits log(value) against log(TIME), a power law. That is
+    the right model for Bitcoin and the BTC scorecard detrends cleanly under
+    it. A series growing at a constant RATE is exponential, not power-law, so
+    the residual grows without bound and the rank pins at the maximum forever,
+    carrying no information. Core PCE did exactly that on the first build with
+    real data. Scoring the year-on-year change instead is both correct and
+    what "inflation" means.
+    """
+    n = 400
+    start = dt.date(1990, 1, 1)
+    index = 100 * np.cumprod(np.full(n, 1 + 0.02 / 12))
+    _write("PCEPILFE", start, list(index), step_days=30)
+
+    families = macro._build_families({
+        "Inflation": [("core_pce", "Core PCE", "PCEPILFE", macro.YOY)]})
+    yoy_now = families["Inflation"][0].at()
+
+    families_trend = macro._build_families({
+        "Inflation": [("core_pce", "Core PCE", "PCEPILFE", macro.TREND)]})
+    trend_now = families_trend["Inflation"][0].at()
+
+    # The trend form is the broken one this test exists to prevent.
+    assert trend_now == pytest.approx(1.0)
+    # The year-on-year form of a CONSTANT growth rate is flat, so it ranks in
+    # the middle rather than at an extreme -- it is not screaming.
+    assert yoy_now is not None
+    assert yoy_now < 0.99
+
+
+def test_yoy_is_matched_by_date_not_row_offset(tmp_store):
+    """Twelve rows back is a year on a monthly series, a quarter on a weekly."""
+    weekly = pl.DataFrame({
+        "date": [dt.date(2024, 1, 1) + dt.timedelta(days=7 * i) for i in range(120)],
+        "value": [100.0 * (1.10 ** (i / 52.0)) for i in range(120)],
+    })
+    yoy = macro._yoy_frame(weekly)
+    assert not yoy.is_empty()
+    # 10% a year, so the last reading should be about +10%, not +10%*(52/12).
+    assert float(yoy["value"][-1]) == pytest.approx(10.0, abs=0.5)
+
+
+def test_yoy_of_a_short_series_is_empty_not_wrong(tmp_store):
+    short = pl.DataFrame({
+        "date": [dt.date(2026, 1, 1) + dt.timedelta(days=30 * i) for i in range(3)],
+        "value": [100.0, 101.0, 102.0],
+    })
+    assert macro._yoy_frame(short).is_empty()
+
+
+def test_every_composite_member_declares_a_known_transform():
+    for spec in (macro.LIQUIDITY_FAMILIES, macro.CYCLE_FAMILIES):
+        for members in spec.values():
+            for _key, _label, _series_id, mode in members:
+                assert mode in (macro.LEVEL, macro.YOY, macro.TREND), mode

@@ -458,55 +458,100 @@ def next_fomc() -> dict:
     return {"available": True, "date": str(when), "days_away": (when - today).days}
 
 
-# Which series feed which composite, and in which family. Kept here rather than
-# inline so the construction is auditable in one place (§7.3).
-LIQUIDITY_FAMILIES: dict[str, list[tuple[str, str, str, bool]]] = {
+# How a series is turned into something a percentile can rank.
+#
+#   "level"  score the value as published. Right for anything already
+#            stationary: a rate, a spread, a ratio, an index like the VIX.
+#   "yoy"    score the year-on-year change. Required for anything that
+#            COMPOUNDS -- a price index, payrolls, a money aggregate.
+#   "trend"  score the residual against a fitted log-log trend.
+#
+# The distinction between "yoy" and "trend" is the one that bites. `risk.
+# detrended` fits log(value) against log(TIME), which is a power law, and that
+# is the correct and deliberate model for Bitcoin -- it is what §7.2's quantile
+# model is built on, and the BTC scorecard detrends cleanly under it. A series
+# that grows at a constant RATE is exponential, not power-law, so the same fit
+# under-models it, the residual grows without bound, and the expanding
+# percentile pins at 1.000 and stays there carrying no information at all.
+# Core PCE was doing exactly that on the first build with real data.
+LEVEL, YOY, TREND = "level", "yoy", "trend"
+
+LIQUIDITY_FAMILIES: dict[str, list[tuple[str, str, str, str]]] = {
     "Policy": [
-        ("effr", "Effective fed funds", "DFF", False),
-        ("real_10y", "10-year real yield", "DFII10", False),
+        ("effr", "Effective fed funds", "DFF", LEVEL),
+        ("real_10y", "10-year real yield", "DFII10", LEVEL),
     ],
     "Credit": [
-        ("hy_oas", "High-yield OAS", "BAMLH0A0HYM2", False),
-        ("nfci", "Financial conditions", "NFCI", False),
+        ("hy_oas", "High-yield OAS", "BAMLH0A0HYM2", LEVEL),
+        ("nfci", "Financial conditions", "NFCI", LEVEL),
     ],
     "Dollar": [
-        ("dollar", "Broad dollar", "DTWEXBGS", False),
+        ("dollar", "Broad dollar", "DTWEXBGS", LEVEL),
     ],
     "Volatility": [
-        ("vix", "VIX", "VIXCLS", False),
+        ("vix", "VIX", "VIXCLS", LEVEL),
     ],
 }
 
-CYCLE_FAMILIES: dict[str, list[tuple[str, str, str, bool]]] = {
+CYCLE_FAMILIES: dict[str, list[tuple[str, str, str, str]]] = {
     "Labour": [
-        ("unrate", "Unemployment rate", "UNRATE", False),
-        ("claims", "Initial claims", "ICSA", False),
+        ("unrate", "Unemployment rate", "UNRATE", LEVEL),
+        ("claims", "Initial claims", "ICSA", LEVEL),
     ],
     "Inflation": [
-        ("core_pce", "Core PCE", "PCEPILFE", True),
-        ("breakeven", "10-year breakeven", "T10YIE", False),
+        # A price INDEX compounds; its year-on-year change is what "inflation"
+        # means and is the only form of it a percentile can rank.
+        ("core_pce", "Core PCE, year on year", "PCEPILFE", YOY),
+        ("breakeven", "10-year breakeven", "T10YIE", LEVEL),
     ],
     "Curve": [
-        ("t10y3m", "10y − 3m", "T10Y3M", True),
+        ("t10y3m", "10y − 3m", "T10Y3M", LEVEL),
     ],
     "Activity": [
-        ("payrolls", "Nonfarm payrolls", "PAYEMS", True),
+        # Payrolls is a level that only grows. Job GROWTH is the cycle signal.
+        ("payrolls", "Payrolls, year on year", "PAYEMS", YOY),
     ],
 }
+
+
+def _yoy_frame(frame: pl.DataFrame) -> pl.DataFrame:
+    """Turn a level series into its year-on-year percentage change.
+
+    Matched by DATE rather than row offset, because these series are monthly
+    and weekly: twelve rows back is a year on one and three months on another.
+    """
+    if frame.height < 2:
+        return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
+    shifted = frame.select([
+        (pl.col("date") + pl.duration(days=365)).alias("date"),
+        pl.col("value").alias("year_ago"),
+    ])
+    joined = frame.join_asof(shifted, on="date", strategy="backward").drop_nulls()
+    joined = joined.filter(pl.col("year_ago") != 0)
+    if joined.is_empty():
+        return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
+    return pl.DataFrame({
+        "date": joined["date"],
+        "value": (joined["value"].to_numpy() / joined["year_ago"].to_numpy() - 1) * 100,
+    })
 
 
 def _build_families(spec: dict) -> dict[str, list]:
     families: dict[str, list] = {}
     for family, members in spec.items():
         built = []
-        for key, label, series_id, trending in members:
+        for key, label, series_id, mode in members:
             frame = _series(series_id)
+            if mode == YOY:
+                frame = _yoy_frame(frame)
             if frame.is_empty():
                 built.append(risk.unavailable(
-                    key, label, family, "no data; needs a FRED API key"))
+                    key, label, family,
+                    "no data; needs a FRED API key" if mode != YOY
+                    else "not enough history for a year-on-year change"))
             else:
                 built.append(risk.build_component(
-                    key, label, family, frame, trending=trending))
+                    key, label, family, frame, trending=(mode == TREND)))
         families[family] = built
     return families
 

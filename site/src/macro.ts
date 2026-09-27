@@ -14,6 +14,17 @@ const signed = (n: number | null | undefined, dp = 2) =>
 // A unit belongs to a number. Appending one to the em-dash that stands in for
 // a missing value produced "—pp", which reads as a measurement rather than as
 // an absence.
+// 99.6 shown as "100%" claims a record that has not happened; 0.3 shown as
+// "0%" claims a floor. Extremes keep a decimal so they read as near-extremes.
+const pctile = (n: number | null | undefined) => {
+  if (n === null || n === undefined) return '—';
+  return n > 99 || (n < 1 && n > 0) ? `${n.toFixed(1)}%` : `${n.toFixed(0)}%`;
+};
+
+// A count published in thousands reads badly at six figures: "159075.00".
+const thousands = (n: number | null | undefined) =>
+  n === null || n === undefined ? '—' : Math.round(n).toLocaleString('en-GB');
+
 const withUnit = (n: number | null | undefined, unit: string, dp = 2) =>
   n === null || n === undefined
     ? '—' : `${signed(n, dp)}<span class="u">${unit}</span>`;
@@ -63,7 +74,7 @@ function ratesTable(rates: any): string {
       <td class="num ${dirClass(r.change_30d)}">${signed(r.change_30d)}</td>
       <td class="num ${dirClass(r.change_90d)}">${signed(r.change_90d)}</td>
       <td class="num ${dirClass(r.change_365d)}">${signed(r.change_365d)}</td>
-      <td class="num">${r.percentile === null ? '—' : `${r.percentile.toFixed(0)}%`}</td>
+      <td class="num">${pctile(r.percentile)}</td>
       <td class="num dim">${escapeHtml(r.as_of)}</td>
     </tr>`;
   }).join('');
@@ -82,14 +93,14 @@ function commoditiesPanel(c: any): string {
        <td class="num">${num(r.value, 2)}</td>
        <td class="num ${dirClass(r.change_30d_pct)}">${signed(r.change_30d_pct, 1)}%</td>
        <td class="num ${dirClass(r.change_365d_pct)}">${signed(r.change_365d_pct, 1)}%</td>
-       <td class="num">${r.percentile === null ? '—' : `${r.percentile.toFixed(0)}%`}</td></tr>`
+       <td class="num">${pctile(r.percentile)}</td></tr>`
     : `<tr><td>${escapeHtml(r.label)}</td>
        <td colspan="4" class="na">${escapeHtml(r.reason)}</td></tr>`).join('');
 
   const ratios = (c?.ratios ?? []).map((r: any) => r.available
     ? `<li><strong>${escapeHtml(r.label)}</strong> ${num(r.value, 3)}
        <span class="${dirClass(r.change_90d_pct)}">${signed(r.change_90d_pct, 1)}% 90d</span>
-       <span class="dim">· ${r.percentile === null ? '' : `${r.percentile.toFixed(0)}th pctile`}</span></li>`
+       <span class="dim">· ${r.percentile === null ? '' : `${pctile(r.percentile)} pctile`}</span></li>`
     : `<li class="na">${escapeHtml(r.label)} — ${escapeHtml(r.reason)}</li>`).join('');
 
   if (!rows) return panelError('no commodity series stored');
@@ -117,7 +128,8 @@ function correlationsPanel(c: any): string {
 function labourPanel(l: any): string {
   const rows = (l?.rows ?? []).map((r: any) => r.available
     ? `<tr><td>${escapeHtml(r.label)}</td>
-       <td class="num">${num(r.value, 2)} <span class="dim">${escapeHtml(r.unit ?? '')}</span></td>
+       <td class="num">${r.unit === 'thousands' ? thousands(r.value) : num(r.value, 2)}
+         <span class="dim">${escapeHtml(r.unit ?? '')}</span></td>
        <td class="num ${dirClass(r.change_365d)}">${signed(r.change_365d)}</td>
        <td class="num dim">${escapeHtml(r.as_of)}</td></tr>`
     : `<tr><td>${escapeHtml(r.label)}</td>
@@ -128,7 +140,7 @@ function labourPanel(l: any): string {
         ${gauge('Initial claims, 4-week average', compact(l.claims.average_4w),
     escapeHtml(l.claims.as_of))}
         ${gauge('Against its 52-week low', `${signed(l.claims.above_low_pct, 1)}%`,
-      `low ${compact(l.claims.low_52w)}`, dirClass(l.claims.above_low_pct))}
+      `low ${compact(l.claims.low_52w)} &middot; up means weakening`)}
         ${l.claims.continuing?.available
     ? gauge('Continuing claims', compact(l.claims.continuing.value),
       escapeHtml(l.claims.continuing.as_of)) : ''}
