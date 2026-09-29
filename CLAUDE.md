@@ -102,7 +102,24 @@ exist and say what they will contain and what is blocking them.
    Outstanding and cosmetic: **Enforce HTTPS is off.** `http://` serves 200
    without redirecting. One checkbox on the same settings page.
 
-5. **The schedule fires, but ~4h40m late.** Resolved as a blocker: `daily.yml`
+5. **Taking the repo PRIVATE unpublishes the Pages site, and making it public
+   again does not restore it.** GitHub Pages from a private repository needs a
+   paid plan (Pro or above); on a free plan going private sets `has_pages` to
+   false and takes the site down. Flipping back to public leaves it false, so
+   the site stays 404 and `deploy-pages` fails against a site that no longer
+   exists. Seen 2026-09-29.
+
+   `daily.yml`'s deploy job now runs `actions/configure-pages@v5` with
+   `enablement: true`, which turns Pages back on and sets the source to GitHub
+   Actions, so the next daily build repairs this by itself.
+
+   Worth knowing before flipping visibility again: on Pro the repo is private
+   but **the Pages site is still publicly reachable** — private source, public
+   site. Access-controlled Pages is Enterprise only. And public repos get
+   unlimited Actions minutes where private ones on free get 2,000/month, which
+   a ~20-minute daily build plus manual dispatches will visibly consume.
+
+6. **The schedule fires, but ~4h40m late.** Resolved as a blocker: `daily.yml`
    ran on `event: schedule` on 2026-09-25 (run 5) and 2026-09-26 (run 6), so
    the cron is live and the build no longer depends on a manual dispatch. It
    does not run at 00:20 UTC though — both started at 05:02–05:05 UTC. GitHub

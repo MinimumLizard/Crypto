@@ -118,5 +118,17 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Turns Pages ON if it is off, and sets the source to GitHub Actions.
+      #
+      # This is not belt and braces. Taking a repository private on a free plan
+      # UNPUBLISHES its Pages site and clears has_pages; making it public again
+      # does not put it back, and deploy-pages then fails against a site that
+      # no longer exists. That happened on 2026-09-29 and the site stayed down
+      # until Pages was re-enabled by hand. With enablement here the daily
+      # build repairs it on the next run instead.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - id: deployment
         uses: actions/deploy-pages@v4
