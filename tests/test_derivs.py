@@ -1,8 +1,10 @@
 """Funding annualisation, OI readings and volatility (§6.9)."""
 
 import numpy as np
+import polars as pl
 import pytest
 
+from pipeline import store
 from pipeline.metrics import derivs
 
 
@@ -76,3 +78,162 @@ def test_atr_percentile_ranks_against_the_assets_own_history():
     out = derivs.atr_percentile(high, low, close)
     assert out["available"]
     assert out["percentile"] > 80
+
+
+# ---------------------------------------------------------------------------
+# Self-inclusion and window honesty (audit, D031)
+# ---------------------------------------------------------------------------
+
+def test_atr_percentile_excludes_today_from_its_own_distribution():
+    """Including it caps the reading at (n-1)/n, so a name at its busiest ATR
+    in a year could never print 100 -- the same defect as D035."""
+    import numpy as np
+
+    n = 400
+    rng = np.random.default_rng(5)
+    close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+    high = close + 1.0
+    low = close - 1.0
+    # Make the final bar by far the widest range in the series.
+    high[-1] = close[-1] + 40.0
+    low[-1] = close[-1] - 40.0
+
+    result = derivs.atr_percentile(high, low, close)
+    assert result["available"]
+    assert result["percentile"] == 100.0
+
+
+def test_atr_percentile_bottoms_at_zero():
+    import numpy as np
+
+    n = 400
+    rng = np.random.default_rng(6)
+    close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+    high = close + 5.0
+    low = close - 5.0
+    high[-1] = close[-1] + 0.001
+    low[-1] = close[-1] - 0.001
+    result = derivs.atr_percentile(high, low, close)
+    assert result["percentile"] < 2.0
+
+
+def test_funding_window_is_measured_from_the_newest_observation(tmp_store):
+    """`datetime.now()` made the window shrink as the store went stale: with
+    snapshots 8 days behind, a "90-day" window held 82 days and said 90."""
+    import datetime as dt
+
+    import numpy as np
+
+    n = 400
+    # Every observation is a year old, so a now()-based cutoff would exclude
+    # all of them and silently fall back to the full history.
+    base = dt.datetime(2025, 9, 1, tzinfo=dt.UTC)
+    rng = np.random.default_rng(3)
+    store.write_snapshot("funding_hourly_TEST", pl.DataFrame({
+        "observed_at": [base + dt.timedelta(hours=i) for i in range(n)],
+        "value": rng.normal(1e-5, 2e-6, n),
+    }), ["observed_at"])
+
+    result = derivs.funding_zscore("TEST", window_days=90)
+    assert result["available"]
+    assert result["widened_to_full_history"] is False
+    # The series spans ~16 days, so the window used is that, not the 90 asked for.
+    assert result["window_days"] < 90
+    assert result["requested_window_days"] == 90
+    assert result["as_of"].startswith("2025-09")
+
+
+def test_funding_zscore_excludes_today(tmp_store):
+    import datetime as dt
+
+    n = 400
+    base = dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
+    values = [1.0e-5] * (n - 1) + [9.0e-5]
+    store.write_snapshot("funding_hourly_TEST", pl.DataFrame({
+        "observed_at": [base + dt.timedelta(hours=i) for i in range(n)],
+        "value": values,
+    }), ["observed_at"])
+    result = derivs.funding_zscore("TEST")
+    # The prior window has zero variance, so no z-score can be formed from it.
+    assert result["available"] is False
+    assert "varied" in result["reason"]
+
+
+def test_oi_change_needs_a_snapshot_a_day_back_not_merely_an_earlier_one(tmp_store):
+    """The comment claimed "at least 20 hours back" and the code took the
+    newest snapshot strictly before the latest -- on a manual dispatch minutes
+    after a build, a "24h OI change" measured over minutes."""
+    import datetime as dt
+
+    base = dt.datetime(2026, 9, 26, 12, 0, tzinfo=dt.UTC)
+    contexts = pl.DataFrame({
+        "observed_at": [base, base + dt.timedelta(minutes=5)],
+        "coin": ["BTC", "BTC"],
+        "open_interest_usd": [1.0e9, 2.0e9],
+        "day_volume_usd": [1.0e9, 1.0e9],
+        "mark": [100.0, 110.0],
+        "prev_day_px": [100.0, 100.0],
+        "funding_hourly": [1e-5, 1e-5],
+    })
+    rows = derivs.open_interest(contexts, {"BTC": 1.0e12})
+    assert len(rows) == 1
+    # Five minutes apart is not a daily change, so none is reported.
+    assert rows[0]["oi_change_pct"] is None
+    assert rows[0]["oi_change_hours"] is None
+    assert rows[0]["snapshots_held"] == 2
+
+
+def test_oi_change_is_reported_once_a_snapshot_is_far_enough_back(tmp_store):
+    import datetime as dt
+
+    base = dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.UTC)
+    contexts = pl.DataFrame({
+        "observed_at": [base, base + dt.timedelta(hours=24)],
+        "coin": ["BTC", "BTC"],
+        "open_interest_usd": [1.0e9, 2.0e9],
+        "day_volume_usd": [1.0e9, 1.0e9],
+        "mark": [100.0, 110.0],
+        "prev_day_px": [100.0, 100.0],
+        "funding_hourly": [1e-5, 1e-5],
+    })
+    rows = derivs.open_interest(contexts, {"BTC": 1.0e12})
+    assert rows[0]["oi_change_pct"] == pytest.approx(100.0)
+    assert rows[0]["oi_change_hours"] == pytest.approx(24.0)
+
+
+def test_open_interest_accepts_a_string_observed_at(tmp_store):
+    """The snapshot tables disagree: `perp_contexts` and `global` store
+    `observed_at` as an ISO-8601 STRING, `funding_hourly_*` as a tz-aware
+    Datetime. Sorting and grouping work on both, so the mismatch was invisible
+    until the first subtraction -- which passed against a datetime fixture and
+    raised TypeError on the real frame.
+    """
+    contexts = pl.DataFrame({
+        "observed_at": ["2026-09-25T12:00:00+00:00", "2026-09-26T12:00:00+00:00"],
+        "coin": ["BTC", "BTC"],
+        "open_interest_usd": [1.0e9, 2.0e9],
+        "day_volume_usd": [1.0e9, 1.0e9],
+        "mark": [100.0, 110.0],
+        "prev_day_px": [100.0, 100.0],
+        "funding_hourly": [1e-5, 1e-5],
+    })
+    rows = derivs.open_interest(contexts, {"BTC": 1.0e12})
+    assert rows[0]["oi_change_pct"] == pytest.approx(100.0)
+    assert rows[0]["oi_change_hours"] == pytest.approx(24.0)
+
+
+def test_funding_zscore_accepts_a_string_observed_at(tmp_store):
+    import datetime as dt
+
+    import numpy as np
+
+    n = 400
+    base = dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
+    rng = np.random.default_rng(4)
+    store.write_snapshot("funding_hourly_STR", pl.DataFrame({
+        "observed_at": [(base + dt.timedelta(hours=i)).isoformat() for i in range(n)],
+        "value": rng.normal(1e-5, 2e-6, n),
+    }), ["observed_at"])
+    result = derivs.funding_zscore("STR")
+    assert result["available"]
+    assert result["window_days"] > 0

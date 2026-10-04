@@ -4,6 +4,7 @@ import datetime as dt
 
 import polars as pl
 
+from pipeline import store
 from pipeline.metrics import breadth
 
 
@@ -73,3 +74,21 @@ def test_dominance_without_stablecoins_still_reports_what_it_has():
 def test_dominance_says_so_when_there_is_no_snapshot():
     out = breadth.dominance(pl.DataFrame(), pl.DataFrame())
     assert not out["available"]
+
+
+def test_the_stablecoin_chart_ends_where_the_panel_says_it_does(tmp_store):
+    """The live defect: `[::3]` on a 540-point series put the chart two days
+    behind the supply figure printed beside it -- 310,964,409,739 at
+    2026-09-24 under a panel reading 311,611,332,068 at 2026-09-26.
+    """
+    n = 540
+    start = dt.date(2025, 1, 1)
+    store.write_onchain("market", "StablecoinSupply", pl.DataFrame({
+        "date": [start + dt.timedelta(days=i) for i in range(n)],
+        "value": [1.0e11 + i * 1.0e8 for i in range(n)],
+    }))
+    result = breadth.stablecoin_trend(
+        store.read_onchain("market", "StablecoinSupply"))
+    assert result["available"]
+    assert result["series"][-1]["d"] == result["as_of"]
+    assert result["series"][-1]["v"] == result["supply"]

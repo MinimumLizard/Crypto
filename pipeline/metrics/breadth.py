@@ -26,7 +26,7 @@ import numpy as np
 import polars as pl
 
 from pipeline import registry, store
-from pipeline.metrics import levels
+from pipeline.metrics import levels, series
 
 MIN_CORRELATION_DAYS = 60
 
@@ -102,8 +102,9 @@ def stablecoin_trend(supply: pl.DataFrame) -> dict:
         "change_30d_pct": change(30),
         "change_90d_pct": change(90),
         "change_365d_pct": change(365),
-        "series": [{"d": str(d), "v": float(v)}
-                   for d, v in zip(dates[-540:], values[-540:], strict=False)][::3],
+        "series": series.keep_newest(
+            [{"d": str(d), "v": float(v)}
+             for d, v in zip(dates[-540:], values[-540:], strict=False)], 3),
         "n_days": int(len(values)),
     }
 

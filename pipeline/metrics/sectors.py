@@ -30,6 +30,7 @@ import numpy as np
 import polars as pl
 
 from pipeline import registry, store
+from pipeline.metrics import series
 
 RS_RATIO_WEEKS = 10
 RS_MOMENTUM_WEEKS = 4
@@ -139,15 +140,12 @@ def sector_indices(days: int = 400) -> dict:
 def _thin(dates: list, values: np.ndarray) -> list[dict]:
     """Every other day, but never without the newest point.
 
-    Plain slicing drops the last element on an even-length series, which put the
-    chart's final point a day behind the return printed beside it.
+    The rule, and why, now lives in `series.keep_newest` -- the same defect
+    turned up in three more places.
     """
     points = [{"d": str(d), "v": round(float(v), 2)}
               for d, v in zip(dates, values, strict=False)]
-    thinned = points[::2]
-    if points and thinned[-1] is not points[-1]:
-        thinned.append(points[-1])
-    return thinned
+    return series.keep_newest(points, 2)
 
 
 def _window_return(series: np.ndarray, days: int) -> float | None:

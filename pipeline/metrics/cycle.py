@@ -19,6 +19,8 @@ import datetime as dt
 import numpy as np
 import polars as pl
 
+from pipeline.metrics import series as _series
+
 # A drawdown this deep separates a cycle from a correction. It is a choice, not
 # a fact, and it is stated on the page as one.
 CYCLE_DRAWDOWN = 0.55
@@ -115,10 +117,11 @@ def roi_from_peak(dates, closes: np.ndarray, cycles: list[dict], max_days: int =
         if len(segment) < 30:
             continue
         ratio = segment / closes[start]
-        series[cycle["peak_date"][:4]] = [
-            {"d": i, "v": round(float(v), 4)} for i, v in enumerate(ratio)
-            if i % 2 == 0          # every other day keeps the payload small
-        ]
+        # Thinned to keep the payload small, but never without the newest
+        # point: on the LIVE cycle that point is today, and the page prints
+        # today's roi_from_peak right beside this line.
+        series[cycle["peak_date"][:4]] = _series.keep_newest(
+            [{"d": i, "v": round(float(v), 4)} for i, v in enumerate(ratio)], 2)
 
     # Mean and +/-1 standard deviation across the completed cycles, which is
     # what makes "shallower than typical at this elapsed time" a measurable
@@ -164,10 +167,9 @@ def roi_from_bottom(dates, closes: np.ndarray, cycles: list[dict],
         segment = closes[start:start + max_days]
         if len(segment) < 60:
             continue
-        series[cycle["low_date"][:4]] = [
-            {"d": i, "v": round(float(v), 3)}
-            for i, v in enumerate(segment / closes[start]) if i % 4 == 0
-        ]
+        series[cycle["low_date"][:4]] = _series.keep_newest(
+            [{"d": i, "v": round(float(v), 3)}
+             for i, v in enumerate(segment / closes[start])], 4)
     return {
         "series": series,
         "how_to_read": ("Price as a multiple of each cycle's low. A flattening "
