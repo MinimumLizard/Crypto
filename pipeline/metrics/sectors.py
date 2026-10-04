@@ -99,10 +99,18 @@ def sector_indices(days: int = 400) -> dict:
         rebased = matrix / base * 100.0
 
         equal = rebased.mean(axis=1)
-        weights = np.array([caps.get(s, 0.0) for s in present], dtype=float)
-        if weights.sum() > 0:
+        # A member with no market cap is EXCLUDED from the cap-weighted index
+        # and named, not given a zero weight. A zero weight contributes
+        # nothing while the member still appears in `included`, so the page
+        # would claim a constituent the line does not contain -- the
+        # placeholder §0.2 forbids, wearing a weight.
+        capped_members = [s for s in present if caps.get(s)]
+        no_cap = [s for s in present if not caps.get(s)]
+        if capped_members:
+            columns = [present.index(s) for s in capped_members]
+            weights = np.array([caps[s] for s in capped_members], dtype=float)
             weights = weights / weights.sum()
-            cap_weighted = (rebased * weights).sum(axis=1)
+            cap_weighted = (rebased[:, columns] * weights).sum(axis=1)
         else:
             cap_weighted = equal
 
@@ -129,6 +137,12 @@ def sector_indices(days: int = 400) -> dict:
                 "the first date every included member had a price"),
             "equal_weight": _thin(dates, equal),
             "cap_weight": _thin(dates, cap_weighted),
+            "cap_weight_members": capped_members if capped_members else present,
+            "cap_weight_note": (
+                None if not no_cap else
+                f"{', '.join(no_cap)} has no market cap in the snapshot and is "
+                f"in the equal-weight index but not the cap-weighted one."),
+            "cap_weight_is_equal_weight": not capped_members,
             "equal_return_pct": round(float(equal[-1] - 100), 1),
             "cap_return_pct": round(float(cap_weighted[-1] - 100), 1),
             "return_30d_pct": _window_return(equal, 30),

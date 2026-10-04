@@ -20,12 +20,17 @@ evidence is `docs/SOURCES.md`.
 P5 (portfolio) and P7 (validation) are what remain.
 
 **A code and model audit ran 2026-10-04 (D031-D035).** Eleven real defects
-fixed, including two that changed a published signal: the 50-week rule was
-confirmed by a Wednesday close (D033) and the cycle detector returned six
-cycles while claiming four (D034). Four modules had no tests and held six of
-the eleven defects; the suite went 175 -> 273. Read D031 first — it lists what
-was verified SOUND as well as what was wrong, so the next session does not
-re-audit the quantile model or the store.
+fixed in the first pass and six more in a second (D036), including two that
+changed a published signal: the 50-week rule was confirmed by a Wednesday
+close (D033) and the cycle detector returned six cycles while claiming four
+(D034). Four modules had no tests and held six of the first eleven defects;
+the suite went 175 -> 290. Read D031 first — it lists what was verified SOUND
+as well as what was wrong, so the next session does not re-audit the quantile
+model or the store. D036 records the three recurring CLASSES, which is the
+more useful artefact.
+
+Not yet audited: the fetchers, `health.py`, `registry.py`, and the site's
+TypeScript beyond the three files these fixes touched.
 
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
@@ -316,6 +321,18 @@ Reasoning in PLAN.md §2.
   just `risk.py`. `own_history_percentile` included today, so its maximum
   possible reading was (n-1)/n = 99.73% and an asset at its own one-year high
   could never print 100% (D035).
+- **Thin a chart series with `series.keep_newest`, never `[::n]`.** A plain
+  slice drops the newest point unless `len-1` is a multiple of the step, and
+  the newest point is the one the panel prints beside the chart. Found four
+  times in four modules (D036).
+- **Once a defect appears twice, grep for the third.** The audit's second pass
+  swept for three classes rather than reading for new bugs and found six more
+  (D036). A percentile that includes the observation it scores is always wrong
+  (it caps at (n-1)/n); a rolling z-score that does is a convention — pick one
+  and apply it everywhere.
+- **`observed_at` is String in `perp_contexts` and `global`, Datetime in
+  `funding_hourly_*`.** Sorting, grouping and `str()` work on both, so the
+  mismatch is invisible until the first subtraction. Coerce before arithmetic.
 - **Never attach a provenance claim a function cannot check.** `_regime_for`
   pasted "Computed on Binance daily bars" onto payloads holding no score, and
   `midterm_monthly` asserted CoinMetrics prices for three years that are 100%

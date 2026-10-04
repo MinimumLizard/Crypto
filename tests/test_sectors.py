@@ -64,3 +64,44 @@ def test_thinning_a_series_never_drops_the_newest_point(n):
     # Still roughly halved, and never longer than the input.
     assert len(thinned) <= n // 2 + 2
     assert [p["d"] for p in thinned] == sorted({p["d"] for p in thinned})
+
+
+def test_a_member_with_no_cap_is_excluded_from_the_cap_weighted_index():
+    """A zero weight contributes nothing while the member still appears in
+    `included`, so the page would claim a constituent the line does not
+    contain. §0.2 forbids the placeholder; a weight of 0.0 is one.
+    """
+    import numpy as np
+
+    rebased = np.array([[100.0, 100.0], [200.0, 100.0]])
+    present = ["HAS_CAP", "NO_CAP"]
+    caps = {"HAS_CAP": 1.0e9}
+
+    capped_members = [s for s in present if caps.get(s)]
+    no_cap = [s for s in present if not caps.get(s)]
+    assert capped_members == ["HAS_CAP"]
+    assert no_cap == ["NO_CAP"]
+
+    columns = [present.index(s) for s in capped_members]
+    weights = np.array([caps[s] for s in capped_members], dtype=float)
+    weights = weights / weights.sum()
+    cap_weighted = (rebased[:, columns] * weights).sum(axis=1)
+    # The index is the capped member alone: it doubled, so the index doubles.
+    assert cap_weighted[-1] == pytest.approx(200.0)
+    # Zero-weighting instead would have halved it to 100 while still listing
+    # NO_CAP as a constituent.
+
+
+def test_sector_indices_name_any_member_missing_from_the_cap_weighted_index(tmp_store):
+    """The note must exist whenever the two indices cover different members."""
+    from pipeline.metrics import sectors as S
+
+    result = S.sector_indices()
+    for _sector, payload in result.items():
+        if not payload.get("available"):
+            continue
+        members = payload["cap_weight_members"]
+        if set(members) != set(payload["included"]):
+            assert payload["cap_weight_note"], payload
+        else:
+            assert payload["cap_weight_note"] is None

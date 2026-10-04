@@ -998,3 +998,82 @@ uses the sample standard deviation of the prior observations, and the payload
 says `ranked_against` so the convention is visible rather than inferred. The
 trailing year is also trimmed explicitly: the function claimed a year and used
 the whole cap series, relying on that series happening to be 365 days long.
+
+---
+
+## 2026-10-04 — D036: the audit's second pass, and three recurring classes
+
+Part one fixed eleven defects. Three of them were instances of a class rather
+than one-off mistakes, so the second pass swept for each class across every
+module instead of reading for new bugs. That found six more, and it is the
+method worth keeping: once a defect has appeared twice, grep for the third.
+
+**Class 1: thinning a chart series with a plain slice.** `points[::step]` keeps
+index 0, step, 2*step... and so drops the last element unless `len - 1` is a
+multiple of `step`. The newest point is the one the panel prints beside the
+chart, so dropping it puts the line behind the number next to it — by up to
+`step - 1` days, silently, and only on some rebuilds.
+
+It had been found once on the 400-day sector charts and fixed locally. The
+sweep found three more: `breadth.stablecoin_trend` with `[::3]`, live and
+visible (the panel read 311,611,332,068 at 2026-09-26 while the line ended
+310,964,409,739 at 2026-09-24), and both cycle ROI series with `[::2]` and
+`[::4]`, where the live cycle's final point IS today and `current_position`
+prints today's `roi_from_peak` beside it. All four now call
+`series.keep_newest`, which exists so the reason lives in one place.
+
+**Class 2: ranking today against a distribution containing today.** D035 found
+it in `own_history_percentile`. The sweep found two more in `derivs`:
+`atr_percentile`, where the ceiling of (n-1)/n meant a name at its busiest ATR
+in a year could never print 100, and `funding_zscore`, which put today in its
+own mean and standard deviation.
+
+The codebase was split on this: `macro._percentile`,
+`geopolitics._percentile_of_last` and `radar._volume_zscore` all exclude the
+observation and the last one cites PLAN §5.3 by name, while `derivs` and
+`valuation` included it. `sectors._zscore` is deliberately left alone — it is a
+rolling normalisation for a rotation chart, where including the point is the
+conventional definition and there is no bounded range for self-inclusion to
+distort. The distinction to carry forward: for a PERCENTILE self-inclusion
+caps the range and is always wrong; for a rolling z-score it is a convention,
+and the thing that matters is that one codebase picks one.
+
+**Class 3: a comment or payload claiming more than the code does.** D031 had
+three of these (the Binance parity note, the volume-block reason, the
+CoinMetrics provenance). Two more: `funding_zscore` reported the REQUESTED
+90-day window even when its fallback had quietly widened the window to all of
+history, and `open_interest`'s comment promised a prior snapshot "at least 20
+hours back, so a change is a change" while the code took the newest snapshot
+strictly before the latest. On a manual dispatch minutes after a build that is
+a 24-hour OI change measured over minutes, and `concurrency: daily-build`
+queues dispatches rather than dropping them, so the pair is reachable. The
+guard is implemented now and rows carry `oi_change_hours`.
+
+**`funding_zscore` also measured its window from `datetime.now()`**, which is
+D033's defect in a second place: with the store eight days behind, a "90-day"
+window held 82 days of data and reported 90. Measured from the newest
+observation now.
+
+**`observed_at` is typed inconsistently across the snapshot tables** — String
+in `perp_contexts` and `global`, tz-aware Datetime in `funding_hourly_*`. Every
+consumer only sorts, groups, takes `.last()` or `str()`s it, and all four work
+on either type, which is precisely why it went unnoticed. An ISO-8601 string
+with a fixed offset also sorts correctly lexicographically, so the existing
+calls are right. The first subtraction raised TypeError on real data while
+passing against a test fixture that happened to use datetimes — my own
+fixture being more convenient than reality, which is its own lesson. Both
+paths are pinned now.
+
+**`sectors` gave a member with no market cap a weight of 0.0** in the
+cap-weighted index while still listing it under `included`, so the page would
+name a constituent the line does not contain. A weight of zero is the
+placeholder §0.2 forbids. Such members are excluded and named instead. Latent
+rather than live: every tracked asset currently has a cap.
+
+**Checked and left alone because they are latent, not live.** `beating_btc` and
+`breadth_over_tracked` compare each asset at its own last row rather than on a
+shared date, and use row offsets for a window labelled in days. Both are
+correct today only because all 26 tracked assets end on the same date and the
+daily series are contiguous — verified, not assumed. `correlations` in the same
+module does it properly by joining on date. Worth knowing which of the three
+to copy if a venue ever lags.
