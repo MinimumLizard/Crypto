@@ -20,7 +20,8 @@ interface Row {
 
 interface Valuation {
   as_of: string; basis: string; bases: string[]; rows: Row[];
-  sector_medians: Record<string, Record<string, number>>;
+  sector_medians: Record<string, { median: Record<string, number>;
+    n: Record<string, number>; assets: number }>;
   grade_counts: Record<string, number>;
   grade_notes: Record<string, string>;
   how_to_read: string; caveat: string;

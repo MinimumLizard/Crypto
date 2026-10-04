@@ -133,9 +133,13 @@ function cyclesPanel(data: any): string {
       <tbody>${rows}</tbody></table></div>
     <p class="howto">${escapeHtml(data.roi_convention)}</p>
     <p class="howto caveat">Cycle boundaries are detected from price: a peak is an
-    all-time high later retraced by more than 55%, and the low is the lowest close
-    before the next peak. They are approximate, and there are only four completed
-    cycles, so any statement about "this point in the cycle" rests on that sample.</p>`;
+    all-time high later retraced by more than ${data.detection?.drawdown_pct ?? '—'}%,
+    and the low is the lowest close before the next peak. Two all-time highs less
+    than ${data.detection?.min_cycle_days ?? '—'} days apart count as one cycle,
+    which is what keeps April 2013 from being read as a cycle of its own. Both
+    figures are choices, not facts. They are approximate, and there are only
+    ${data.detection?.completed_cycles ?? '—'} completed cycles, so any statement
+    about "this point in the cycle" rests on that sample.</p>`;
 }
 
 function midtermPanel(m: any): string {
@@ -155,7 +159,8 @@ function midtermPanel(m: any): string {
           : inner;
       }).join('')}</tr>`).join('')}
     </tbody></table></div>
-    <p class="howto caveat">${escapeHtml(m.how_to_read)}</p>`;
+    <p class="howto caveat">${escapeHtml(m.how_to_read)}</p>
+    ${m.source_note ? `<p class="howto">${escapeHtml(m.source_note)}</p>` : ''}`;
 }
 
 async function main(): Promise<void> {

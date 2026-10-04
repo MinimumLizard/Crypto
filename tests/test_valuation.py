@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 import pytest
 
+from pipeline import store
 from pipeline.metrics import valuation as V
 
 
@@ -156,3 +157,124 @@ def test_implied_growth_solves_the_stated_equation():
 
 def test_payback_refuses_when_holders_get_nothing():
     assert not V.payback_years(1e9, V.Value(0.0), 0.1).ok
+
+
+# ---------------------------------------------------------------------------
+# own_history_percentile: ranking today against its own past, not itself
+# ---------------------------------------------------------------------------
+
+def _write_cap_and_fees(tmp_store, coingecko_id: str, slug: str,
+                        caps: list[float], fee_per_day: float = 100.0):
+    """A cap series and a flat fee series long enough to fill a 90d window."""
+    end = dt.date(2026, 9, 26)
+    n = len(caps)
+    cap_dates = [end - dt.timedelta(days=n - 1 - i) for i in range(n)]
+    store.write_onchain(f"cg_{coingecko_id}", "MarketCap", pl.DataFrame({
+        "date": cap_dates, "value": [float(c) for c in caps]}))
+    # Fees must reach 90 days before the first cap date.
+    fee_dates = [cap_dates[0] - dt.timedelta(days=120 - i) for i in range(120)] + cap_dates
+    store.write_fundamentals(slug, "dailyFees", pl.DataFrame({
+        "date": fee_dates, "value": [fee_per_day] * len(fee_dates)}))
+
+
+def test_today_is_not_part_of_the_distribution_it_is_scored_against(tmp_store):
+    """PLAN §5.3, and the rule `risk.expanding_rank` already implements.
+
+    `(values < current).mean()` cannot reach 1.0 when `current` is inside
+    `values`, so an asset at its own one-year high read 99.73% instead of
+    100%. AAVE and SKY both did.
+    """
+    caps = [100.0] * 364 + [500.0]          # today is the highest reading
+    _write_cap_and_fees(tmp_store, "test-coin", "test-slug", caps)
+
+    result = V.own_history_percentile("TEST", "test-coin", "test-slug")
+    assert result["available"], result.get("reason")
+    assert result["percentile"] == 100.0
+    assert result["n"] == len(caps) - 1
+    assert "excluding today" in result["ranked_against"]
+
+
+def test_an_asset_at_its_own_low_reads_zero(tmp_store):
+    caps = [500.0] * 364 + [100.0]
+    _write_cap_and_fees(tmp_store, "test-coin", "test-slug", caps)
+    result = V.own_history_percentile("TEST", "test-coin", "test-slug")
+    assert result["percentile"] == 0.0
+
+
+def test_the_zscore_excludes_today_from_its_mean_and_sd(tmp_store):
+    import numpy as np
+
+    caps = [100.0 + i for i in range(364)] + [1000.0]
+    _write_cap_and_fees(tmp_store, "test-coin", "test-slug", caps)
+    result = V.own_history_percentile("TEST", "test-coin", "test-slug")
+
+    # The multiple is cap / annualised fees, and fees are flat, so the ratio is
+    # proportional to the cap. Recompute the z against the prior values only.
+    prior = np.array(caps[:-1], dtype=float)
+    expected = (caps[-1] - prior.mean()) / prior.std(ddof=1)
+    assert result["zscore"] == pytest.approx(expected, rel=0.02)
+
+
+def test_the_window_is_trimmed_to_a_year_rather_than_assumed(tmp_store):
+    """The docstring claims a trailing year; the code used the whole cap
+    series and relied on it happening to be 365 days long."""
+    caps = [100.0] * 500 + [500.0]
+    _write_cap_and_fees(tmp_store, "test-coin", "test-slug", caps)
+    result = V.own_history_percentile("TEST", "test-coin", "test-slug")
+    assert result["n"] == 364
+
+
+def test_percentile_needs_a_slug_and_says_so(tmp_store):
+    result = V.own_history_percentile("TEST", "test-coin", None)
+    assert result["available"] is False and "slug" in result["reason"]
+
+
+def test_percentile_states_why_when_there_is_too_little_history(tmp_store):
+    caps = [100.0] * 40
+    _write_cap_and_fees(tmp_store, "test-coin", "test-slug", caps)
+    result = V.own_history_percentile("TEST", "test-coin", "test-slug")
+    assert result["available"] is False
+    assert "days" in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# sector_medians
+# ---------------------------------------------------------------------------
+
+def _valuation(symbol: str, sector: str, p_fees: float | None) -> V.AssetValuation:
+    return V.AssetValuation(
+        symbol=symbol, name=symbol, sector=sector, tier=1, kind="book",
+        is_chain=False, grade="A", grade_note="",
+        metrics={"p_fees": {"v": p_fees, "reason": None}})
+
+
+def test_a_sector_median_says_how_many_names_it_is_over():
+    """A median across one asset IS that asset, and the number alone does not
+    say which. Same reason the cycle band states how many cycles it averaged.
+    """
+    result = V.sector_medians([
+        _valuation("A", "Lending", 10.0),
+        _valuation("B", "Lending", 20.0),
+        _valuation("C", "Lending", 30.0),
+        _valuation("D", "Solo", 99.0),
+    ], ["p_fees"])
+
+    assert result["Lending"]["median"]["p_fees"] == pytest.approx(20.0)
+    assert result["Lending"]["n"]["p_fees"] == 3
+    assert result["Lending"]["assets"] == 3
+    assert result["Solo"]["n"]["p_fees"] == 1
+
+
+def test_a_metric_nobody_in_the_sector_has_is_absent_not_zero():
+    result = V.sector_medians([
+        _valuation("A", "Lending", None),
+        _valuation("B", "Lending", None),
+    ], ["p_fees"])
+    assert "p_fees" not in result["Lending"]["median"]
+    assert "p_fees" not in result["Lending"]["n"]
+    assert result["Lending"]["assets"] == 2
+
+
+def test_an_asset_with_no_sector_is_left_out():
+    result = V.sector_medians([_valuation("A", "", 10.0)], ["p_fees"])
+    assert result == {}

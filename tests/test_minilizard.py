@@ -143,6 +143,84 @@ def test_cvd_is_cumulative_across_days():
     assert out[1] == pytest.approx(135.0)
 
 
+def test_an_unscoreable_bar_has_no_regime_rather_than_a_neutral_one():
+    """NEUTRAL is a reading. It says the engine looked and found chop.
+
+    Publishing it for a bar that could not be scored is the placeholder §0.2
+    forbids. XMR carried 138 such bars on its published chart, every one
+    labelled NEUTRAL, because Hyperliquid backfills candles from before the
+    venue existed with zero volume and the volume block correctly goes nan.
+    """
+    scores = np.array([np.nan, np.nan, 50.0], dtype=float)
+    regimes, signals = ml._regimes(scores)
+    assert regimes[0] is None
+    assert regimes[1] is None
+    assert signals[0] == "" and signals[1] == ""
+    assert regimes[2] == ml.BULL
+
+
+def test_a_gap_in_the_data_does_not_fire_a_spurious_round_trip():
+    """The position was never exited, so no GET OUT and no second GET IN.
+
+    With the gap labelled NEUTRAL the chart claimed a round trip through
+    neutral that never happened; worse, the running regime stayed BULL, so the
+    label and the state machine disagreed with each other.
+    """
+    scores = np.array([0.0, 50.0, np.nan, np.nan, 50.0], dtype=float)
+    regimes, signals = ml._regimes(scores)
+    assert signals[1] == "GET IN"
+    assert regimes[2] is None and regimes[3] is None
+    assert regimes[4] == ml.BULL
+    assert signals.count("GET IN") == 1
+    assert signals.count("GET OUT") == 0
+
+
+def test_warmup_is_false_on_a_bar_the_engine_could_not_score(synthetic_bars):
+    """The bug: `warm` was purely positional, so it read True past bar 300
+    even where the composite was nan.
+
+    XMR is scored on Hyperliquid, which backfills real oracle prices with ZERO
+    volume from before the asset listed there. 999 of its 1,251 bars have an
+    undefined volume block and no score, and every one from bar 300 onward was
+    flagged warm — a claim of readiness on a bar with nothing to read.
+    """
+    dates, open_, high, low, close, volume = synthetic_bars
+    zeroed = volume.copy()
+    zeroed[:500] = 0.0        # as Hyperliquid backfills pre-listing candles
+
+    series = ml.compute(dates, open_, high, low, close, zeroed)
+    unscoreable = np.isnan(series.score)
+    assert unscoreable[:500].all()          # the gap is real
+    # Not one unscoreable bar is warm, at any position.
+    assert not series.warm[unscoreable].any()
+    # And the bars that DO have a score past the warm-up are warm.
+    assert series.warm[-1]
+
+
+def test_warmup_requires_300_bars_of_history_not_300_scored_bars(synthetic_bars):
+    """§6.14 asks for a 300-bar warm-up: 300 bars of HISTORY.
+
+    Demanding 300 *scored* bars would be a stricter rule than the spec's,
+    because the structure block alone spends the first 200 bars settling its
+    SMA200. It would have withheld MORPHO's reading — 356 real Binance bars
+    whose score simply starts at bar 200 — and HYPE's, and FLUID's. Where the
+    engine's effective history is short the artefact says so instead.
+    """
+    dates, open_, high, low, close, volume = synthetic_bars
+    series = ml.compute(dates, open_, high, low, close, volume)
+    first_warm = int(np.argmax(series.warm))
+    assert first_warm == ml.WARMUP_BARS
+    # Far fewer than 300 bars carry a score at that point, and that is correct.
+    assert int(np.sum(~np.isnan(series.score[:first_warm + 1]))) < ml.WARMUP_BARS
+    assert np.isnan(series.score[:first_warm]).sum() > 0
+
+
+def test_no_bar_inside_the_first_300_is_ever_warm(synthetic_bars):
+    dates, open_, high, low, close, volume = synthetic_bars
+    series = ml.compute(dates, open_, high, low, close, volume)
+    assert not series.warm[:ml.WARMUP_BARS].any()
+
+
 # ---------------------------------------------------------------------------
 # Parity
 # ---------------------------------------------------------------------------

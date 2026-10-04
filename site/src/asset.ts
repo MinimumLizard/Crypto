@@ -68,6 +68,8 @@ function regimePanel(regime: any): string {
       </tbody></table></div>
     <p class="howto caveat"><strong>${substitute ? 'Substitute venue.' : 'Parity unverified.'}</strong>
       ${escapeHtml(regime.parity_note ?? '')}</p>
+    ${regime.short_history_note ? `<p class="howto caveat"><strong>Short engine history.</strong>
+       ${escapeHtml(regime.short_history_note)}</p>` : ''}
     ${regime.cvd_note ? `<p class="howto">${escapeHtml(regime.cvd_note)}</p>` : ''}
     ${regime.no_measured_edge ? `<p class="howto caveat"><strong>No measured edge.</strong>
        The backtest found no edge for this name.</p>` : ''}

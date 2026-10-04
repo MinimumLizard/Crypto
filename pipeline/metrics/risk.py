@@ -27,6 +27,8 @@ names or branding of anyone's proprietary risk metrics (§7.3).
 
 from __future__ import annotations
 
+import bisect
+import datetime as dt
 from dataclasses import dataclass
 
 import numpy as np
@@ -37,17 +39,19 @@ MIN_RANK_OBSERVATIONS = 60     # below this a percentile is noise
 
 
 def expanding_rank(values: np.ndarray) -> np.ndarray:
-    """Percentile rank of each value among all values up to and including it.
+    """Percentile rank of each value among all values STRICTLY BEFORE it.
+
+    Excluding the observation being scored is the no-look-ahead rule of
+    PLAN §5.3: a rank that counted itself would score today partly against
+    today.
 
     O(n log n) via argsort rather than the obvious O(n^2) loop, which matters
     at 6,000 daily observations times ~25 metrics on every build.
     """
     n = len(values)
     out = np.full(n, np.nan)
-    order = np.argsort(np.argsort(values, kind="stable"), kind="stable")
     # A running count of how many earlier values are below each value needs a
     # Fenwick tree to stay fast; at this size a simple sorted insert is fine.
-    import bisect
     seen: list[float] = []
     for i, value in enumerate(values):
         if np.isnan(value):
@@ -58,7 +62,6 @@ def expanding_rank(values: np.ndarray) -> np.ndarray:
         if i + 1 >= MIN_RANK_OBSERVATIONS:
             out[i] = position / max(len(seen), 1)
         bisect.insort(seen, value)
-    del order
     return np.clip(out, 0.0, 1.0)
 
 
@@ -96,9 +99,27 @@ def detrended(dates, values: np.ndarray) -> np.ndarray:
 
 
 def risk_series(dates, values: np.ndarray, *, trending: bool = False) -> np.ndarray:
-    """A metric turned into 0-1 risk, point-in-time throughout."""
+    """A metric turned into 0-1 risk, point-in-time throughout.
+
+    §7.3 asks for a warm-up of two to four years before a reading counts as
+    signal. MIN_WARMUP_DAYS existed for that and was never applied: the only
+    gate was MIN_RANK_OBSERVATIONS, which is 60 OBSERVATIONS and so means two
+    months on a daily series and five years on a monthly one. The macro page
+    meanwhile told the reader "a component needs 730 days of history before it
+    is scored at all", which was simply not true of the code underneath it.
+
+    The warm-up is measured in ELAPSED DAYS rather than rows, for the same
+    reason `Component.lookback` is: 730 rows is two years of daily data and
+    sixty years of monthly data.
+    """
     base = detrended(dates, values) if trending else np.asarray(values, dtype=float)
-    return expanding_rank(base)
+    ranked = expanding_rank(base)
+
+    if len(ranked) and dates is not None and len(dates):
+        start = dates[0]
+        warm = np.array([(d - start).days >= MIN_WARMUP_DAYS for d in dates])
+        ranked = np.where(warm, ranked, np.nan)
+    return ranked
 
 
 @dataclass
@@ -118,8 +139,26 @@ class Component:
         return None if np.isnan(value) else round(float(value), 3)
 
     def lookback(self, days: int) -> float | None:
-        """The reading `days` ago -- the 6M / 1Y / 4Y columns of the scorecard."""
-        index = len(self.risk) - 1 - days
+        """The reading `days` ago, matched by DATE rather than row offset.
+
+        Row offset is only the same thing as elapsed time on a daily series.
+        risk.py was written for daily data, and on a MONTHLY series
+        `lookback(182)` walked back 182 observations -- fifteen years -- under
+        a column headed "6m". Core PCE, payrolls and the unemployment rate are
+        all monthly and all sit in the business-cycle composite, so three of
+        its four families were publishing readings from the 1990s as though
+        they were from six months ago.
+
+        The observation used is the newest one at or before the target date,
+        so a monthly series answers with the month that was current then
+        rather than interpolating a day that was never published.
+        """
+        if not self.available or len(self.risk) == 0 or not self.dates:
+            return None
+        target = self.dates[-1] - dt.timedelta(days=days)
+        if target < self.dates[0]:
+            return None
+        index = bisect.bisect_right(self.dates, target) - 1
         return self.at(index) if index >= 0 else None
 
 

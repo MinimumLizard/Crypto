@@ -145,9 +145,12 @@ def clean_supply(supply: pl.DataFrame, total_supply: float | None) -> tuple[pl.D
        +14.7% annualised dilution on a token whose supply grew 1.2% that year.
 
     2. **Isolated outliers against a centred rolling median.** For names with
-       no max supply the first filter cannot fire, so anything more than 10%
-       away from the local median is dropped as an artefact of the two rounded
-       legs the series is derived from.
+       no max supply the first filter cannot fire, so anything further than
+       OUTLIER_TOLERANCE from the local median is dropped as an artefact of the
+       two rounded legs the series is derived from. The figure was 10% when
+       this list was written and is now 5%, for the reason the constant's own
+       comment gives; naming the constant rather than restating its value is
+       what keeps the two from drifting apart again.
 
     Returns the cleaned frame and a count of what went, so the page can say how
     much of the series survived rather than implying it was clean all along.
@@ -668,21 +671,30 @@ def compute(asset: registry.Asset, markets: pl.DataFrame,
 # ---------------------------------------------------------------------------
 
 def sector_medians(valuations: list[AssetValuation], keys: list[str]) -> dict:
-    """Median of each metric within each sector, for the relative-value column."""
-    out: dict[str, dict[str, float]] = {}
+    """Median of each metric within each sector, for the relative-value column.
+
+    Each sector carries `n`, the count behind every median. A "sector median"
+    taken across one asset IS that asset, and nothing in the number itself
+    tells the reader which it is -- the same reason the cycle band states how
+    many cycles it averaged.
+    """
+    out: dict[str, dict] = {}
     by_sector: dict[str, list[AssetValuation]] = {}
     for item in valuations:
         if item.sector:
             by_sector.setdefault(item.sector, []).append(item)
 
     for sector, members in by_sector.items():
-        row: dict[str, float] = {}
+        values_by_key: dict[str, float] = {}
+        counts: dict[str, int] = {}
         for key in keys:
             values = [m.metrics.get(key, {}).get("v") for m in members]
             values = [v for v in values if v is not None]
             if values:
-                row[key] = round(float(np.median(values)), 6)
-        out[sector] = row
+                values_by_key[key] = round(float(np.median(values)), 6)
+                counts[key] = len(values)
+        out[sector] = {"median": values_by_key, "n": counts,
+                       "assets": len(members)}
     return out
 
 
@@ -690,11 +702,24 @@ def own_history_percentile(symbol: str, coingecko_id: str, slug: str | None,
                            basis: str = DEFAULT_BASIS) -> dict:
     """Where today's P/Fees sits in its own trailing-year distribution.
 
-    Computed point-in-time: at each date the multiple uses that date's market
-    cap and the fee window ENDING that date, so no reading uses a fee that had
-    not been reported yet. §6.4 asks for percentile and z-score; both are over
-    a year, which is roughly 250 observations — enough to rank against, not
-    enough to call a distribution.
+    Computed point-in-time twice over, and only one of the two was right
+    before. At each date the multiple uses that date's market cap and the fee
+    window ENDING that date, so no reading uses a fee that had not been
+    reported yet -- that part always held.
+
+    The RANKING did not. Percentile and z-score were taken over the whole
+    series including today, so today was scored partly against itself. That is
+    the rule PLAN §5.3 states and `risk.expanding_rank` implements ("a rank
+    that counted itself would score today partly against today"), and this
+    function contradicted both while claiming to be point-in-time. The
+    symptom was visible: `(values < current).mean()` can never reach 1.0 when
+    `current` is in `values`, so an asset at its own one-year high read 99.73%
+    rather than 100% -- AAVE and SKY both did.
+
+    §6.4 asks for percentile and z-score; both are over a year, which is
+    roughly 250 observations -- enough to rank against, not enough to call a
+    distribution. The window is now trimmed to a year explicitly rather than
+    relying on the cap series happening to be 365 days long.
     """
     if not slug:
         return {"available": False, "reason": "no protocol or chain slug"}
@@ -723,16 +748,24 @@ def own_history_percentile(symbol: str, coingecko_id: str, slug: str | None,
         return {"available": False,
                 "reason": f"only {len(series)} comparable days in the last year"}
 
-    values = np.array(series)
+    values = np.array(series[-365:])
     current = values[-1]
-    percentile = float((values < current).mean() * 100)
-    sd = float(values.std())
-    z = float((current - values.mean()) / sd) if sd > 0 else 0.0
+    prior = values[:-1]
+    if len(prior) < 59:
+        return {"available": False,
+                "reason": f"only {len(prior)} prior days to rank today against"}
+
+    percentile = float((prior < current).mean() * 100)
+    sd = float(prior.std(ddof=1))
+    z = float((current - prior.mean()) / sd) if sd > 0 else 0.0
     return {
         "available": True, "metric": "p_fees", "basis": basis,
         "current": round(float(current), 4),
         "percentile": round(percentile, 1),
         "zscore": round(z, 2),
-        "n": len(values),
-        "median": round(float(np.median(values)), 4),
+        "n": len(prior),
+        "median": round(float(np.median(prior)), 4),
+        "ranked_against": (
+            f"the {len(prior)} prior days, excluding today -- today is not part "
+            f"of the distribution it is scored against"),
     }

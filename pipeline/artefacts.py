@@ -87,33 +87,54 @@ def _regime_for(asset: registry.Asset) -> dict:
     parity_venue = "binance" if asset.binance_spot else None
     bars = store.read_ohlcv(asset.symbol, parity_venue) if parity_venue else store._empty_ohlcv()
 
-    if bars.height < ml.WARMUP_BARS:
-        longest = store.venues(asset.symbol)
-        fallback = store.read_ohlcv(asset.symbol, longest[0]) if longest else store._empty_ohlcv()
-        reason = ("no Binance pair exists" if not asset.binance_spot
-                  else f"Binance has only {bars.height} bars, and the engine needs "
-                       f"{ml.WARMUP_BARS} to warm up")
-        if fallback.height >= ml.WARMUP_BARS:
-            series = _score(asset, fallback)
-            series["parity"] = "substitute"
-            series["scored_on"] = longest[0]
-            series["parity_note"] = (
-                f"Scored on {longest[0]} bars because {reason}. This score is real "
-                f"but is NOT comparable to a TradingView reading, which is drawn "
-                f"from Binance.")
-            return series
-        return {
-            "available": False,
-            "reason": f"{reason}; no other venue has {ml.WARMUP_BARS} bars either",
-        }
+    attempts: list[str] = []
 
-    series = _score(asset, bars)
-    series["parity"] = "binance"
-    series["scored_on"] = "binance"
-    series["parity_note"] = (
-        "Computed on Binance daily bars, the series TradingView draws. Parity "
-        "itself is UNVERIFIED: no reference readings have been supplied.")
-    return series
+    if bars.height >= ml.WARMUP_BARS:
+        series = _score(asset, bars)
+        if series["available"]:
+            series["parity"] = "binance"
+            series["scored_on"] = "binance"
+            series["parity_note"] = (
+                "Computed on Binance daily bars, the series TradingView draws. "
+                "Parity itself is UNVERIFIED: no reference readings have been "
+                "supplied.")
+            return series
+        # A venue with enough ROWS can still fail to produce a reading, and the
+        # old code pasted "Computed on Binance daily bars" onto that failure --
+        # a claim about work that did not happen. Record why and fall through to
+        # the other venues, which is also new: Binance clearing the row gate
+        # used to end the search even when it scored nothing.
+        attempts.append(f"binance ({bars.height} bars): {series['reason']}")
+    elif parity_venue:
+        attempts.append(
+            f"binance has only {bars.height} bars, and the engine needs "
+            f"{ml.WARMUP_BARS} to warm up")
+    else:
+        attempts.append("no Binance pair exists")
+
+    for venue in store.venues(asset.symbol):
+        if venue == parity_venue:
+            continue
+        fallback = store.read_ohlcv(asset.symbol, venue)
+        if fallback.height < ml.WARMUP_BARS:
+            attempts.append(f"{venue} has only {fallback.height} bars")
+            continue
+        series = _score(asset, fallback)
+        if not series["available"]:
+            attempts.append(f"{venue} ({fallback.height} bars): {series['reason']}")
+            continue
+        series["parity"] = "substitute"
+        series["scored_on"] = venue
+        series["parity_note"] = (
+            f"Scored on {venue} bars because {attempts[0]}. This score is real "
+            f"but is NOT comparable to a TradingView reading, which is drawn "
+            f"from Binance.")
+        return series
+
+    return {
+        "available": False,
+        "reason": "no venue could produce a reading: " + "; ".join(attempts),
+    }
 
 
 def _score(asset: registry.Asset, bars: pl.DataFrame) -> dict:
@@ -128,6 +149,38 @@ def _score(asset: registry.Asset, bars: pl.DataFrame) -> dict:
         list(bars["date"]), bars["open"].to_numpy(), bars["high"].to_numpy(),
         bars["low"].to_numpy(), bars["close"].to_numpy(), bars["volume"].to_numpy(),
         extension_threshold_pct=asset.extension_threshold_pct, cvd=cvd)
+
+    # Having enough ROWS is not the same as having a scoreable latest bar, and
+    # the venue gate upstream only counts rows. If the newest bar's composite
+    # is undefined there is no reading to publish, and the reason must name the
+    # block that is actually missing rather than assert one: MORPHO's nans come
+    # from the SMA200 in the structure block, XMR's from a zero-volume
+    # backfill, and a single sentence that blames volume is wrong about one of
+    # them.
+    if not bool(result.warm[-1]):
+        blocks = {"price structure": result.structure, "trend": result.trend,
+                  "momentum": result.momentum, "volume": result.volume}
+        undefined = [name for name, block in blocks.items()
+                     if np.isnan(np.asarray(block, dtype=float)[-1])]
+        detail = (f"the {', '.join(undefined)} block is undefined on it"
+                  if undefined else
+                  f"it is inside the {ml.WARMUP_BARS}-bar warm-up")
+        return {
+            "available": False,
+            "reason": (f"the newest of {len(result.score)} bars could not be "
+                       f"scored: {detail}"),
+            "engine_bars": int(np.sum(~np.isnan(result.score))),
+            "required_bars": ml.WARMUP_BARS,
+        }
+
+    # The reading is real, but the engine's effective history can be far
+    # shorter than the bar count implies, and that bears on how much weight it
+    # carries. Naming it beats withholding a sound score (§0.2 asks for the
+    # limitation stated, not the panel emptied).
+    scoreable = ~np.isnan(result.score)
+    engine_bars = int(np.sum(scoreable))
+    engine_from = str(result.date[int(np.argmax(scoreable))])
+    short_history = engine_bars < ml.WARMUP_BARS
 
     tail = 400
     history = [
@@ -153,6 +206,17 @@ def _score(asset: registry.Asset, bars: pl.DataFrame) -> dict:
         "latest": result.latest(),
         "history": history,
         "signals": signals,
+        "engine_bars": engine_bars,
+        "engine_from": engine_from,
+        "bars": len(result.score),
+        "short_history_note": (
+            None if not short_history else
+            f"The engine has produced a score on only {engine_bars} of "
+            f"{len(result.score)} stored bars, starting {engine_from}, which is "
+            f"fewer than the {ml.WARMUP_BARS}-bar warm-up §6.14 asks for. The "
+            f"latest reading itself is computed from settled indicators and is "
+            f"real; what it does not yet have is enough engine history to be "
+            f"backtested or compared across a cycle."),
         "no_measured_edge": asset.minilizard_no_measured_edge,
         "how_to_read": (
             "A composite of price structure, trend, momentum and volume, clamped "

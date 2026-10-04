@@ -22,6 +22,15 @@ import polars as pl
 # A drawdown this deep separates a cycle from a correction. It is a choice, not
 # a fact, and it is stated on the page as one.
 CYCLE_DRAWDOWN = 0.55
+
+# Two all-time highs closer together than this belong to one cycle. Also a
+# choice, and also stated on the page. The observed peak-to-peak gaps are
+# bimodal and leave a wide margin either side of a year: 239 days for the
+# April-to-December 2013 pair against 671, 1423, 1428 and 1473 days for every
+# real cycle boundary. Any threshold between those two groups gives the same
+# answer, so the exact figure is not load-bearing.
+MIN_CYCLE_DAYS = 365
+
 MIDTERM_YEARS = (2014, 2018, 2022, 2026)
 
 
@@ -32,14 +41,38 @@ def find_cycles(dates: list, closes: np.ndarray) -> list[dict]:
     version only required a running maximum that was later retraced, and it
     split the 2018 bear in two: March 2018's $11.5k was a lower high inside the
     drawdown from December 2017's $19.6k, and got counted as a cycle of its own.
-    Requiring each peak to exceed every previous peak is what makes the count
-    come out as four cycles rather than six.
+
+    That rule is necessary and was not sufficient. It is also what this
+    docstring used to claim brought the count to four rather than six, while
+    the code in fact returned six: April 2013's $231 WAS a genuine all-time
+    high, it did retrace 71%, and a new all-time high followed 239 days later,
+    so 2013 was split in two exactly as 2018 had been. The consequence was not
+    cosmetic -- `current_position` published prior peak-to-low durations of
+    [163, 88, 406, 364, 378] days, inviting the reader to compare this cycle's
+    elapsed time against an 88-day figure that is a mid-bull crash rather than
+    a cycle bottom, and the analog band averaged it in as a fifth cycle.
+
+    So two all-time highs less than MIN_CYCLE_DAYS apart are treated as one
+    cycle, and the later, higher high is the peak. The count is four.
 
     The low is then the minimum close between one peak and the next. A cycle is
     only recorded once price has retraced CYCLE_DRAWDOWN from the peak, so a
     shallow pullback from a new high does not open one.
     """
     peaks: list[int] = []
+
+    def record(index: int) -> None:
+        """Append a peak, or replace the last one if it is too close.
+
+        Replacing rather than skipping is what keeps the true cycle top: the
+        later high is by construction the higher one, since only an all-time
+        high reaches here.
+        """
+        if peaks and dates and (dates[index] - dates[peaks[-1]]).days < MIN_CYCLE_DAYS:
+            peaks[-1] = index
+        elif index not in peaks:
+            peaks.append(index)
+
     all_time_high = -np.inf
     candidate = 0
     for i, price in enumerate(closes):
@@ -47,12 +80,12 @@ def find_cycles(dates: list, closes: np.ndarray) -> list[dict]:
             all_time_high = price
             candidate = i
         elif price < all_time_high * (1 - CYCLE_DRAWDOWN) and candidate not in peaks:
-            peaks.append(candidate)
+            record(candidate)
     # The most recent all-time high opens the current cycle even if the
     # retracement has not yet reached the threshold -- otherwise the live cycle
     # would be invisible until it had already fallen by more than half.
     if candidate not in peaks:
-        peaks.append(candidate)
+        record(candidate)
     peaks = sorted(set(peaks))
 
     cycles = []
@@ -143,9 +176,15 @@ def roi_from_bottom(dates, closes: np.ndarray, cycles: list[dict],
     }
 
 
-def midterm_monthly(dates, closes: np.ndarray) -> dict:
-    """Monthly returns for midterm election years (§6.5 cycle analogs)."""
-    frame = pl.DataFrame({"date": dates, "close": closes}).with_columns(
+def midterm_monthly(dates, closes: np.ndarray, *,
+                    source_note: str | None = None) -> dict:
+    """Monthly returns for midterm election years (§6.5 cycle analogs).
+
+    `source_note` is supplied by the caller, which is the only layer that knows
+    where the prices came from. This function used to name a source itself and
+    named the wrong one for three of the four years it covers.
+    """
+    frame = pl.DataFrame({"date": dates, "close": closes}).sort("date").with_columns(
         pl.col("date").dt.year().alias("year"), pl.col("date").dt.month().alias("month"))
     rows = []
     for year in MIDTERM_YEARS:
@@ -154,7 +193,11 @@ def midterm_monthly(dates, closes: np.ndarray) -> dict:
             continue
         months: dict[str, float | None] = {}
         partial: list[str] = []
-        last_date = dates[-1]
+        # From the SORTED frame, not from `dates[-1]`. The month's returns were
+        # already order-independent once the frame was sorted, but the partial
+        # flag still read the raw input list, so an unsorted series marked the
+        # wrong month -- or no month -- as still running.
+        last_date = frame["date"][-1]
         for month in range(1, 13):
             month_frame = year_frame.filter(pl.col("month") == month)
             if month_frame.height < 2:
@@ -181,9 +224,8 @@ def midterm_monthly(dates, closes: np.ndarray) -> dict:
                         "completed observations is enough to describe a tendency "
                         "and not enough to establish one; treat the pattern as a "
                         "prior, not a rule. A month still running is marked "
-                        "partial. Prices are CoinMetrics reference rates, so "
-                        "early-cycle figures can differ by a point or two from "
-                        "sources using a single exchange."),
+                        "partial."),
+        "source_note": source_note or "",
     }
 
 

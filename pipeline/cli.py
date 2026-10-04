@@ -70,10 +70,35 @@ def btc_full_series() -> pl.DataFrame:
     for venue in ("coinbase", "binance", "coinmetrics"):
         frame = store.read_ohlcv("BTC", venue)
         if not frame.is_empty():
-            parts.append(frame.select(["date", "close"]))
+            parts.append(frame.select(["date", "close"]).with_columns(
+                pl.lit(venue).alias("source")))
     if not parts:
-        return pl.DataFrame(schema={"date": pl.Date, "close": pl.Float64})
+        return pl.DataFrame(schema={"date": pl.Date, "close": pl.Float64,
+                                    "source": pl.Utf8})
     return pl.concat(parts).unique(subset=["date"], keep="first").sort("date")
+
+
+def _price_provenance(series: pl.DataFrame) -> str:
+    """Name which venue supplied which stretch, measured from the frame.
+
+    `midterm_monthly` used to assert "Prices are CoinMetrics reference rates",
+    which is true of 2014 and false of 2018, 2022 and 2026 -- those are 100%
+    Coinbase. It then added that the figures "can differ by a point or two from
+    sources using a single exchange", which has it exactly backwards for three
+    of the four rows it annotates.
+    """
+    if series.is_empty() or "source" not in series.columns:
+        return ""
+    spans = []
+    for (venue,), part in series.group_by(["source"]):
+        spans.append((part["date"].min(), venue, part["date"].max(), part.height))
+    spans.sort()
+    phrases = [f"{venue} from {start} to {end}" for start, venue, end, _ in spans]
+    return ("Prices are spliced, oldest source first: "
+            + "; ".join(phrases)
+            + ". CoinMetrics is a multi-exchange reference rate and the others "
+              "are single venues, so figures from different stretches can "
+              "differ by a point or two and are not strictly comparable.")
 
 
 # ---------------------------------------------------------------------------
@@ -234,12 +259,22 @@ def build_btc_cycle() -> dict:
         "current": cycle.current_position(dates, closes, cycles),
         "roi_from_peak": cycle.roi_from_peak(dates, closes, cycles),
         "roi_from_bottom": cycle.roi_from_bottom(dates, closes, cycles),
-        "midterm_monthly": cycle.midterm_monthly(dates, closes),
+        "midterm_monthly": cycle.midterm_monthly(
+            dates, closes, source_note=_price_provenance(series)),
         "ytd_roi": cycle.ytd_roi(dates, closes),
         "roi_convention": (
             "ROI here means a normalised PRICE RATIO, not a percentage return: "
             "0.52 from the peak means price sits at 52% of the peak, a 48% "
             "decline."),
+        # The detection parameters travel with the data. The site used to
+        # spell "55%" and "four completed cycles" into its prose, which is a
+        # market number hard-coded in the UI -- and the count was simply wrong:
+        # the detector returned five completed cycles while the page said four.
+        "detection": {
+            "drawdown_pct": round(cycle.CYCLE_DRAWDOWN * 100, 1),
+            "min_cycle_days": cycle.MIN_CYCLE_DAYS,
+            "completed_cycles": max(len(cycles) - 1, 0),
+        },
     }
 
     # Quantile bands, gated on the replication check (§7.2).

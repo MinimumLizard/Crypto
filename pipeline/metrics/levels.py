@@ -19,7 +19,29 @@ import polars as pl
 
 
 def to_weekly(daily: pl.DataFrame, *, drop_open_week: bool = True) -> pl.DataFrame:
-    """Resample daily bars to weekly (Monday-anchored), dropping the open week."""
+    """Resample daily bars to weekly (Monday-anchored), dropping the open week.
+
+    "Open" is decided from the DATA, not from the clock. The previous version
+    compared each week against `dt.date.today()`, which is wrong in two ways at
+    once.
+
+    It made the function non-deterministic: the same stored bars resampled on a
+    Sunday and on a Monday returned a different number of weekly rows, so a
+    rebuild could move an SMA50W with no new data behind it.
+
+    Worse, it kept partial weeks whenever the store was behind. On 2026-10-04
+    the BTC series ended 2026-09-23, a Wednesday. The calendar week beginning
+    2026-09-21 was long over, so the filter passed it, but we hold only three
+    days of it -- and its "weekly close" was Wednesday's close, feeding the
+    SMA50W, `last_weekly_close` and the 50-week confirmation streak as though
+    the week had closed there. That is exactly the claim this module's
+    docstring says it refuses to make.
+
+    A week is closed when the daily series reaches its final day. Because the
+    rows are ordered, this only ever trims the tail: an interior week with a
+    missing Sunday is a data gap, and dropping it would be worse than carrying
+    what it has.
+    """
     if daily.is_empty():
         return daily
     frame = daily.sort("date").with_columns(
@@ -34,8 +56,9 @@ def to_weekly(daily: pl.DataFrame, *, drop_open_week: bool = True) -> pl.DataFra
     ]).rename({"week": "date"})
 
     if drop_open_week and not weekly.is_empty():
-        this_week = dt.date.today() - dt.timedelta(days=dt.date.today().weekday())
-        weekly = weekly.filter(pl.col("date") < this_week)
+        series_end = frame["date"].max()
+        weekly = weekly.filter(
+            pl.col("date") + dt.timedelta(days=6) <= series_end)
     return weekly
 
 
@@ -172,8 +195,14 @@ def key_levels(daily: pl.DataFrame) -> dict:
         month_start = frame["date"][-1].replace(day=1)
         previous_month = frame.filter(pl.col("date") < month_start)
         if previous_month.height:
-            last_month = previous_month.filter(
-                pl.col("date") >= (month_start - dt.timedelta(days=31)).replace(day=1))
+            # Stepping back 31 days and truncating lands in the month BEFORE
+            # last whenever the intervening month is shorter than 31 days, so
+            # the window spanned two months in March, May, July, October and
+            # December -- five months in twelve, with a two-month extreme drawn
+            # on the chart under the label "previous month". One day back is
+            # always the last day of the previous month, whatever its length.
+            last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+            last_month = previous_month.filter(pl.col("date") >= last_month_start)
             if last_month.height:
                 levels["prev_month_high"] = round(float(last_month["high"].max()), 4)
                 levels["prev_month_low"] = round(float(last_month["low"].min()), 4)

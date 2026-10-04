@@ -266,7 +266,20 @@ def _regimes(score: np.ndarray) -> tuple[list[str], list[str]]:
     regimes, signals = [], []
     for value in score:
         if np.isnan(value):
-            regimes.append(NEUTRAL)
+            # An unmeasurable bar is NOT neutral. NEUTRAL is a reading -- it
+            # says the engine looked and found chop -- and publishing it for a
+            # bar that could not be scored is the placeholder §0.2 forbids.
+            # XMR carried 138 such bars on its published chart, every one
+            # labelled NEUTRAL, because Hyperliquid backfills candles from
+            # before the venue existed with zero volume and the volume block
+            # correctly goes nan there.
+            #
+            # The running `regime` is deliberately NOT reset: the position was
+            # never exited, so no GET IN fires when data resumes. Emitting None
+            # here is what makes the chart agree with that -- it now reads
+            # BULL, unknown, BULL rather than claiming a round trip through
+            # neutral that never happened.
+            regimes.append(None)
             signals.append("")
             continue
         previous = regime
@@ -330,7 +343,22 @@ def compute(dates, open_, high, low, close, volume,
     score = np.where(np.isnan(blocks).any(axis=0), np.nan, score)
 
     regimes, signals = _regimes(score)
-    warm = np.arange(len(close)) >= WARMUP_BARS
+    # Two conditions, and the second was missing. §6.14 asks for a 300-bar
+    # warm-up, which is 300 bars of HISTORY -- that part was right. But the
+    # flag was purely positional, so it also read True on bars the engine
+    # could not score at all. XMR is scored on Hyperliquid, which backfills
+    # real oracle prices with ZERO volume from before the asset listed there:
+    # 999 of its 1,251 bars have an undefined volume block and therefore no
+    # score, and every one of them from bar 300 onward was flagged warm.
+    #
+    # A bar with no score is not warm under any reading of the rule, so the
+    # flag now requires both. It deliberately does NOT require 300 *scored*
+    # bars: that would be a stricter rule than the spec's, and it would have
+    # suppressed readings that are themselves sound (MORPHO's Binance series
+    # is 356 real bars whose score simply starts at the SMA200). Where the
+    # engine's effective history is shorter than the bar count suggests, the
+    # artefact says so rather than withholding the reading -- see `_score`.
+    warm = (np.arange(len(close)) >= WARMUP_BARS) & ~np.isnan(score)
 
     return Series(
         date=dates, structure=structure, trend=trend, momentum=momentum,

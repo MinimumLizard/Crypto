@@ -19,6 +19,14 @@ evidence is `docs/SOURCES.md`.
 (geopolitics, radar) done and LIVE at https://minimumlizard.github.io/Crypto/.**
 P5 (portfolio) and P7 (validation) are what remain.
 
+**A code and model audit ran 2026-10-04 (D031-D035).** Eleven real defects
+fixed, including two that changed a published signal: the 50-week rule was
+confirmed by a Wednesday close (D033) and the cycle detector returned six
+cycles while claiming four (D034). Four modules had no tests and held six of
+the eleven defects; the suite went 175 -> 273. Read D031 first — it lists what
+was verified SOUND as well as what was wrong, so the next session does not
+re-audit the quantile model or the store.
+
 Shipped: the probe and `docs/SOURCES.md`; `docs/PLAN.md`; the registry; the
 pipeline (store, fetchers, metrics, artefacts, CLI); Pine-exact indicators; the
 MiniLizard engine; the quantile model **with its replication gate passing**;
@@ -281,6 +289,38 @@ Reasoning in PLAN.md §2.
   seconds locally.
 - **A unit must never be appended to the em-dash that stands for a missing
   value.** "—pp" reads as a measurement. `macro.ts` has `withUnit` for this.
+- **"Is this period over" is a question about the DATA, never about today.**
+  `to_weekly` dropped the open week by comparing against `dt.date.today()`.
+  With the store 11 days behind, a Monday-to-Wednesday stub passed the filter
+  and its Wednesday close was published as a WEEKLY close — which confirmed the
+  50-week rule when the real answer was 1 of 2 (D033). A clock cannot tell a
+  stale store from a running week; the series can.
+- **A row count is not a measurement count.** Hyperliquid serves real oracle
+  candles from before an asset listed there with volume of exactly zero, so XMR
+  has 1,251 bars and 252 scoreable ones. Gating on `height` published a regime
+  on bars that had no score, and labelled them NEUTRAL (D032). Check
+  `~isnan(score)`, not `len`.
+- **An unmeasurable bar is not neutral, and the fix is to disclose, not to
+  suppress.** Requiring 300 *scored* bars is stricter than §6.14's 300-bar
+  warm-up and withheld sound readings from MORPHO, FLUID and four others. Keep
+  the spec's number, add `short_history_note` (D032).
+- **A docstring that states a result is not a test of it.** `find_cycles` said
+  "four cycles rather than six" and returned six for months (D034). The four
+  modules with no tests — `levels.py`, `cycle.py`, `risk.py`, `artefacts.py`'s
+  regime selection — held six of the eleven defects the audit found.
+- **Month arithmetic: step back ONE day, never 31.** `(month_start - 31d)
+  .replace(day=1)` lands in the month before last whenever the intervening
+  month is shorter than 31 days — March, May, July, October and December, five
+  months in twelve, each drawing a two-month extreme labelled "previous month".
+- **A percentile must exclude the observation it scores**, in every module, not
+  just `risk.py`. `own_history_percentile` included today, so its maximum
+  possible reading was (n-1)/n = 99.73% and an asset at its own one-year high
+  could never print 100% (D035).
+- **Never attach a provenance claim a function cannot check.** `_regime_for`
+  pasted "Computed on Binance daily bars" onto payloads holding no score, and
+  `midterm_monthly` asserted CoinMetrics prices for three years that are 100%
+  Coinbase. Derive the claim from the frame, or take it from the layer that
+  knows.
 
 ## Commands
 

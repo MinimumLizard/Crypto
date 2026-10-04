@@ -788,3 +788,213 @@ worse — it makes the reader learn a per-panel convention.
 
 **A unit appended to the em-dash that stands for a missing value** produced
 "—pp", which reads as a measurement rather than an absence.
+
+---
+
+## 2026-10-04 — D031: a code and model audit, and what it found
+
+A full read of the statistical core, the store, the signal engine and the
+metrics modules, asked to find errors rather than to add a feature. Eleven real
+defects, four modules that had no tests at all, and five things worth recording
+as sound.
+
+**Sound, and verified rather than assumed.** The quantile model publishes no
+look-ahead and its replication gate passes. `risk.expanding_rank` correctly
+ranks against values strictly before the observation. The store's upsert is
+idempotent and its sort is stable. `btc_full_series` splices three venues with
+coinbase winning every one of the 228 overlapping dates where it disagrees with
+CoinMetrics, as intended. Pine-exact indicator semantics hold.
+
+**The defects, in descending order of what they changed on the page:**
+
+1. The 50-week confirmation rule published CONFIRMED on a Wednesday close. See
+   D033.
+2. `find_cycles` returned six cycles while its own docstring asserted four, and
+   the extra two polluted every cross-cycle comparison. See D034.
+3. A bar the engine could not score was labelled NEUTRAL, and `warm` claimed
+   readiness on it. See D032.
+4. `Component.lookback` walked back N ROWS for a column headed "6m". On the
+   monthly series in the business-cycle composite — core PCE, payrolls, the
+   unemployment rate — that read fifteen years back, so three of its four
+   families published readings from the 1990s as current comparisons.
+5. `MIN_WARMUP_DAYS` existed and was never applied. The macro page told the
+   reader a component needs 730 days of history before it is scored; the only
+   gate was 60 OBSERVATIONS, which is two months on a daily series. The
+   warm-up is now enforced and measured in elapsed days, for the same reason
+   as (4).
+6. `key_levels` drew a TWO-MONTH extreme under the label "previous month" in
+   five months of twelve. Stepping back 31 days and truncating to the first of
+   the month lands in the month before last whenever the intervening month is
+   shorter than 31 days: March, May, July, October, December. One day back is
+   always the last day of the previous month, whatever its length.
+7. `own_history_percentile` ranked today against a distribution containing
+   today. See D035.
+8. `_regime_for` pasted "Computed on Binance daily bars, the series TradingView
+   draws" onto payloads that held no score at all, and a venue clearing the ROW
+   gate ended the venue search even when it scored nothing. MORPHO now scores.
+9. `_score`'s failure reason asserted "no usable volume" for every case. It is
+   true of XMR and false of MORPHO, whose nans come from the SMA200 in the
+   structure block. The reason is now derived from which block is actually
+   undefined on the newest bar.
+10. `midterm_monthly` asserted "Prices are CoinMetrics reference rates", which
+    is true of 2014 and false of 2018, 2022 and 2026 — those are 100% Coinbase.
+    It then added that figures "can differ from sources using a single
+    exchange", which has it exactly backwards for three of the four rows it
+    annotates. Provenance is now measured from the frame by the only layer
+    that knows it, and passed in.
+11. `midterm_monthly`'s partial-month flag read `dates[-1]` on the raw input
+    rather than the sorted frame, so an unsorted series marked the wrong month
+    as still running. Found by a test written for the fix to the returns, which
+    the sort had already repaired.
+
+**Four modules had no tests.** `levels.py`, `cycle.py`, `artefacts.py`'s regime
+selection and `risk.py` itself. Six of the eleven defects were in those four.
+That is not a coincidence and it is the most transferable finding here: the
+untested modules were not the unimportant ones, they were the ones holding the
+headline signal and the cycle comparison. They now have 95 tests between them.
+
+**Two things noted and deliberately not changed.** `clean_supply` uses a
+CENTRED rolling median, which uses future points to decide whether today is an
+artefact. That is correct for a cleaning step feeding a display metric and
+would be look-ahead if it ever fed a backtest; the docstring says centred, and
+this note is the record that it must not. And `sector_medians` is computed and
+shipped but never rendered — §6.4's relative-value column does not exist on the
+page yet. It now carries `n` per metric, because the first sector in the
+artefact is a median over exactly one asset.
+
+---
+
+## 2026-10-04 — D032: a bar that cannot be scored is not neutral, and warm-up is a claim about data
+
+NEUTRAL is a reading. It says the engine looked and found chop. Publishing it
+for a bar whose composite is undefined is the placeholder §0.2 forbids, and the
+scale was not small: 348 bars across the published charts, 148 of them on XMR
+and 200 on MORPHO.
+
+The cause is upstream and worth knowing. Hyperliquid serves real oracle candles
+from before an asset listed there, with volume of exactly zero — XMR's first
+999 bars have genuine OHLC (962 distinct closes, a real move from \$150 to
+\$710) and no volume at all. The volume block correctly goes nan, the composite
+correctly goes nan, and `_regimes` then turned that nan into a confident label.
+
+The regime is now None on such a bar. The running regime is deliberately NOT
+reset: the position was never exited, so no GET IN fires when data resumes, and
+the chart reads BULL, unknown, BULL rather than claiming a round trip through
+neutral that never happened.
+
+`warm` was separately wrong, and the first fix for it was also wrong, which is
+the part worth recording. The flag was purely positional, so it read True past
+bar 300 on bars with no score. The obvious repair — require 300 SCORED bars —
+is a stricter rule than §6.14's and it suppressed readings that are sound:
+MORPHO's Binance series is 356 real bars whose score simply starts at the
+SMA200, and demanding 500 rows withheld a legitimate score from it, from FLUID
+and from four others.
+
+§6.14 asks for a 300-bar warm-up, which is 300 bars of HISTORY. So `warm` now
+requires 300 bars AND a scoreable bar, which is the minimal claim the data
+supports. Where the engine's effective history is shorter than the bar count
+implies, the artefact SAYS so — `engine_bars`, `engine_from` and a
+`short_history_note` — rather than withholding the number. §0.2 asks for the
+limitation stated, not the panel emptied. Six names carry that note today; 24
+of 26 now produce a reading, against 24 before the audit and 22 under the
+rejected stricter rule.
+
+---
+
+## 2026-10-04 — D033: the 50-week rule was confirmed by a Wednesday close
+
+The single signal the brief is most specific about: **two consecutive WEEKLY
+CLOSES** above the 50-week SMA. Not a daily close, not an intraweek touch. The
+module's own docstring says the in-progress week is excluded because "a week
+that has not closed cannot have closed above anything".
+
+It decided which week was in progress from `dt.date.today()`, and that is wrong
+in two independent ways.
+
+It made resampling non-deterministic: the same stored bars resampled on a Sunday
+and on a Monday return a different number of weekly rows, so a rebuild could
+move the SMA50W with no new data behind it.
+
+And it kept partial weeks whenever the store was behind. On 2026-10-04 the BTC
+series ended Wednesday 2026-09-23. The calendar week beginning 2026-09-21 was
+long over, so the filter passed it — but only three days of it are held, and
+its "weekly close" was Wednesday's close. Measured:
+
+    OLD (clock-based)  476 weekly bars  last close 84,397.60  streak 2  CONFIRMED
+    NEW (data-based)   475 weekly bars  last close 81,178.00  streak 1  not confirmed
+
+The site was publishing a 50-week confirmation that had not happened, on the
+strength of a Wednesday counted as a week.
+
+A week is closed when the daily series reaches its final day. Because the rows
+are ordered this only ever trims the tail, so an interior week with a missing
+Sunday is still carried — a data gap, and dropping it would be worse than
+keeping what it has. No clock is consulted anywhere.
+
+The general rule: "is this period over" is a question about the DATA, never
+about today's date. A stale store and a running period are indistinguishable to
+a clock and trivially distinguishable to the series itself.
+
+---
+
+## 2026-10-04 — D034: four cycles, not six — an all-time-high rule is necessary and not sufficient
+
+`find_cycles` carried a docstring asserting that requiring each peak to be an
+all-time high "is what makes the count come out as four cycles rather than
+six". It returned six. The docstring described an intention, and nothing
+checked it, because the module had no tests.
+
+The all-time-high rule does fix the case it was written for: March 2018's
+\$11.5k was a lower high inside December 2017's drawdown and is correctly no
+longer a cycle. It does not fix 2013. April 2013's \$231 WAS a genuine
+all-time high, it did retrace 71%, and a new all-time high followed 239 days
+later — so 2013 split in two exactly as 2018 had.
+
+The consequence was not cosmetic. `current_position` published prior
+peak-to-low durations of [163, 88, 406, 364, 378] days and prior low-to-peak
+durations of [508, 151, 1067, 1059, 1050], inviting the reader to compare this
+cycle's elapsed 267 days against an 88-day figure that is a mid-bull crash, not
+a cycle bottom. The analog band averaged it in as a fifth cycle. And the site's
+own prose read "there are only four completed cycles" while the artefact said
+five.
+
+Two all-time highs closer together than `MIN_CYCLE_DAYS` are now one cycle, and
+the later, higher high is the peak. The observed gaps are bimodal and leave a
+wide margin either side of a year — 239 days for the April-to-December 2013
+pair against 671, 1423, 1428 and 1473 for every real boundary — so any
+threshold between the two groups gives the same answer and the exact figure is
+not load-bearing. It is a choice, like `CYCLE_DRAWDOWN`, and like it the page
+now states it.
+
+Both parameters and the completed-cycle count travel with the data instead of
+being spelled into the page's prose, where "55%" and "four" were a hard-coded
+market number in the UI and one of them was simply false.
+
+---
+
+## 2026-10-04 — D035: a percentile must not include the observation it scores
+
+`own_history_percentile` opens "Computed point-in-time", and half of that was
+true. At each date the multiple uses that date's market cap and the fee window
+ENDING that date, so no reading uses a fee that had not been reported yet.
+
+The RANKING was not point-in-time. Percentile and z-score were taken over the
+whole series including today, so today was scored partly against itself. That
+is the rule PLAN §5.3 states, and it is the rule `risk.expanding_rank` already
+implements — its docstring says "a rank that counted itself would score today
+partly against today". One module obeyed it and the other contradicted it while
+claiming to follow it.
+
+The bias is small and it has a sharp symptom: `(values < current).mean()` cannot
+reach 1.0 when `current` is inside `values`, so the maximum possible percentile
+was (n-1)/n = 99.73% and an asset at its own one-year high could never read
+100%. AAVE and SKY both sat there. Measured across five names the shift is
++0.19 to +0.27 points of percentile and about +0.01 of z — negligible as a
+number, and the kind of off-by-one that already cost this project a render pass
+once with "1th percentile".
+
+Today is now excluded from the distribution it is ranked against, the z-score
+uses the sample standard deviation of the prior observations, and the payload
+says `ranked_against` so the convention is visible rather than inferred. The
+trailing year is also trimmed explicitly: the function claimed a year and used
+the whole cap series, relying on that series happening to be 365 days long.
